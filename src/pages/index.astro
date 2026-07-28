@@ -1,17 +1,68 @@
 ---
+import "../styles/reset.css";
+import "../styles/utils.css";
+import "../styles/base.css";
 
+import NumberBarrel from "../components/NumberBarrel.astro";
+import TimerEditor from "../components/TimerEditor.astro";
+import TimerList from "../components/TimerList.astro";
+import TimerPlayer from "../components/TimerPlayer.astro";
 ---
 
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#111111" />
+    <meta name="description" content="A simple interval timer for workouts." />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <title>Interval Timer</title>
+  </head>
+  <body>
+    <main>
+      <h1 class="sr-only">Interval Timer</h1>
+
+      <div data-mode-build>
+        <TimerEditor />
+        <div class="barrel-group">
+          <NumberBarrel value={0} />
+          <span>:</span>
+          <NumberBarrel value={30} />
+        </div>
+        <TimerList />
+      </div>
+
+      <div data-mode-play hidden>
+        <TimerPlayer />
+      </div>
+    </main>
+
+    <script>
+      import "../scripts/app.js";
+    </script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch(() => {
+            /* Service worker registration is best-effort. */
+          });
+        });
+      }
+    </script>
+  </body>
 </html>
+
+<style>
+  .barrel-group {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: center;
+    margin-block: 2rem;
+    font-size: 2.5rem;
+  }
+</style>

@@ -1,0 +1,59 @@
+---
+
+---
+
+<section data-timer-editor>
+  <form data-editor-form>
+    <fieldset>
+      <legend>Create set</legend>
+
+      <label>
+        Name
+        <input name="name" type="text" value="My set" autocomplete="off" />
+      </label>
+
+      <label>
+        Work minutes
+        <input name="workMinutes" type="number" min="0" value="1" inputmode="numeric" />
+      </label>
+
+      <label>
+        Work seconds
+        <input name="workSeconds" type="number" min="0" max="59" value="0" inputmode="numeric" />
+      </label>
+
+      <label>
+        Rest minutes
+        <input name="restMinutes" type="number" min="0" value="0" inputmode="numeric" />
+      </label>
+
+      <label>
+        Rest seconds
+        <input name="restSeconds" type="number" min="0" max="59" value="30" inputmode="numeric" />
+      </label>
+
+      <label>
+        Rounds
+        <input name="rounds" type="number" min="1" max="100" value="1" inputmode="numeric" />
+      </label>
+
+      <button type="submit" data-editor-save disabled>Save set</button>
+    </fieldset>
+  </form>
+</section>
+
+<style>
+  fieldset {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 1rem;
+  }
+
+  label {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+</style>
