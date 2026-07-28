@@ -1,73 +1,59 @@
-import { enhanceEditor } from "./editor.js";
-import { enhanceList } from "./list.js";
-import { enhancePlayer } from "./player.js";
-import { addSet, deleteSet, loadSets } from "./storage.js";
-
-/**
- * Toggle build/play modes with View Transitions when available.
- * @param {HTMLElement} buildMode
- * @param {HTMLElement} playMode
- * @param {'build' | 'play'} mode
- */
-function setMode(buildMode, playMode, mode) {
-  const apply = () => {
-    const isPlay = mode === "play";
-    buildMode.hidden = isPlay;
-    playMode.hidden = !isPlay;
-  };
-
-  if (typeof document.startViewTransition === "function") {
-    document.startViewTransition(apply);
-  } else {
-    apply();
-  }
-}
+import { enhanceNumberFields } from "../components/number-field.js";
+import { enhancePlayer } from "../components/player.js";
+import { createConfig } from "./model.js";
+import { loadConfig, saveConfig } from "./storage.js";
 
 function main() {
-  const editorRoot = document.querySelector("[data-timer-editor]");
-  const listRoot = document.querySelector("[data-timer-list]");
-  const playerRoot = document.querySelector("[data-timer-player]");
-  const buildMode = document.querySelector("[data-mode-build]");
-  const playMode = document.querySelector("[data-mode-play]");
-  const backButton = document.querySelector("[data-back-to-build]");
+  const appRoot = document.querySelector("[data-app-root]");
+  const playerRoot = document.querySelector("[data-player]");
 
-  if (
-    !(editorRoot instanceof HTMLElement) ||
-    !(listRoot instanceof HTMLElement) ||
-    !(playerRoot instanceof HTMLElement) ||
-    !(buildMode instanceof HTMLElement) ||
-    !(playMode instanceof HTMLElement)
-  ) {
+  if (!(appRoot instanceof HTMLElement) || !(playerRoot instanceof HTMLElement)) {
     return;
   }
 
-  enhanceEditor(editorRoot);
-  const list = enhanceList(listRoot);
-  const player = enhancePlayer(playerRoot);
-  if (!list || !player) return;
+  const fields = enhanceNumberFields(appRoot);
+  const fieldByName = new Map(fields.map((field) => [field.name, field]));
 
-  list.render(loadSets());
+  const initial = loadConfig();
+  for (const [name, value] of Object.entries(initial)) {
+    fieldByName.get(name)?.setValue(value);
+  }
 
-  document.addEventListener("set-created", (event) => {
-    const set = /** @type {CustomEvent} */ (event).detail;
-    list.render(addSet(set));
+  /**
+   * @returns {import('./model.js').TimerConfig}
+   */
+  const readConfig = () =>
+    createConfig({
+      workSeconds: fieldByName.get("workSeconds")?.getValue(),
+      restSeconds: fieldByName.get("restSeconds")?.getValue(),
+      rounds: fieldByName.get("rounds")?.getValue(),
+    });
+
+  /**
+   * @param {boolean} running
+   */
+  const setFieldsDisabled = (running) => {
+    for (const field of fields) {
+      field.setDisabled(running);
+    }
+  };
+
+  const player = enhancePlayer(playerRoot, {
+    getConfig: readConfig,
+    onRunningChange: setFieldsDisabled,
   });
 
-  document.addEventListener("set-deleted", (event) => {
-    const { id } = /** @type {CustomEvent} */ (event).detail;
-    list.render(deleteSet(id));
-  });
+  if (!player) return;
 
-  document.addEventListener("play-set", async (event) => {
-    const set = /** @type {CustomEvent} */ (event).detail;
-    player.loadSet(set);
-    setMode(buildMode, playMode, "play");
-    await player.start();
-  });
+  appRoot.addEventListener("number-field-change", () => {
+    const config = readConfig();
+    saveConfig(config);
 
-  backButton?.addEventListener("click", () => {
-    player.stop();
-    setMode(buildMode, playMode, "build");
+    // Edits while paused (or idle) soft-reset so the next Play starts prepare
+    // with the updated values. While running, fields are disabled.
+    if (!player.isRunning()) {
+      player.softReset(config);
+    }
   });
 }
 

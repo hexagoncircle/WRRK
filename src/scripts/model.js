@@ -3,12 +3,10 @@
  */
 
 /**
- * @typedef {Object} TimerSet
- * @property {string} id
- * @property {string} name
- * @property {number} workSeconds Must be > 0
- * @property {number} restSeconds May be 0
- * @property {number} rounds Integer from 1 to 100
+ * @typedef {Object} TimerConfig
+ * @property {number} workSeconds
+ * @property {number} restSeconds
+ * @property {number} rounds
  */
 
 /**
@@ -19,8 +17,18 @@
  * @property {number} totalRounds
  */
 
-export const MAX_ROUNDS = 100;
-export const PREPARE_SECONDS = 3;
+// in seconds
+export const DURATION_MIN = 5;
+export const DURATION_MAX = 9 * 60 + 59; // 9:59
+export const DURATION_STEP = 5;
+export const READY_COUNT = 3;
+export const ROUNDS_MAX = 100;
+
+export const DEFAULT_CONFIG = Object.freeze({
+  workSeconds: 60,
+  restSeconds: 30,
+  rounds: 1,
+});
 
 /**
  * @param {unknown} value
@@ -33,80 +41,57 @@ function toNonNegativeInt(value) {
 }
 
 /**
- * @param {{
- *   id?: string,
- *   name?: string,
- *   workMinutes?: number,
- *   workSeconds?: number,
- *   restMinutes?: number,
- *   restSeconds?: number,
- *   workSecondsTotal?: number,
- *   restSecondsTotal?: number,
- *   rounds?: number,
- * }} input
- * @returns {{ ok: true, set: TimerSet } | { ok: false, error: string }}
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
  */
-export function createTimerSet(input = {}) {
-  const name = String(input.name ?? "").trim() || "Untitled set";
-
-  const workSeconds =
-    input.workSecondsTotal != null
-      ? toNonNegativeInt(input.workSecondsTotal)
-      : toNonNegativeInt(input.workMinutes) * 60 + toNonNegativeInt(input.workSeconds);
-
-  const restSeconds =
-    input.restSecondsTotal != null
-      ? toNonNegativeInt(input.restSecondsTotal)
-      : toNonNegativeInt(input.restMinutes) * 60 + toNonNegativeInt(input.restSeconds);
-
-  const rounds = toNonNegativeInt(input.rounds);
-
-  if (workSeconds <= 0) {
-    return { ok: false, error: "Work duration must be greater than zero." };
-  }
-
-  if (rounds < 1 || rounds > MAX_ROUNDS) {
-    return { ok: false, error: `Rounds must be between 1 and ${MAX_ROUNDS}.` };
-  }
-
-  /** @type {TimerSet} */
-  const set = {
-    id: typeof input.id === "string" && input.id ? input.id : crypto.randomUUID(),
-    name,
-    workSeconds,
-    restSeconds,
-    rounds,
-  };
-
-  return { ok: true, set };
+export function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 /**
- * Expand a set into timed phases.
- * Pattern: (Work → Rest) × rounds, omitting zero-length rests and the rest after the final work.
+ * @param {{
+ *   workSeconds?: number,
+ *   restSeconds?: number,
+ *   rounds?: number,
+ * }} input
+ * @returns {TimerConfig}
+ */
+export function createConfig(input = {}) {
+  return {
+    workSeconds: clamp(toNonNegativeInt(input.workSeconds ?? DEFAULT_CONFIG.workSeconds), DURATION_MIN, DURATION_MAX),
+    restSeconds: clamp(toNonNegativeInt(input.restSeconds ?? DEFAULT_CONFIG.restSeconds), DURATION_MIN, DURATION_MAX),
+    rounds: clamp(toNonNegativeInt(input.rounds ?? DEFAULT_CONFIG.rounds), 1, ROUNDS_MAX),
+  };
+}
+
+/**
+ * Expand a config into timed phases.
+ * Pattern: (Work → Rest) × rounds, omitting the rest after the final work.
  *
- * @param {TimerSet} set
+ * @param {TimerConfig} config
  * @returns {Phase[]}
  */
-export function toPhases(set) {
+export function toPhases(config) {
   /** @type {Phase[]} */
   const phases = [];
 
-  for (let round = 1; round <= set.rounds; round++) {
+  for (let round = 1; round <= config.rounds; round++) {
     phases.push({
       type: "work",
-      durationSeconds: set.workSeconds,
+      durationSeconds: config.workSeconds,
       round,
-      totalRounds: set.rounds,
+      totalRounds: config.rounds,
     });
 
-    const isLastRound = round === set.rounds;
-    if (!isLastRound && set.restSeconds > 0) {
+    const isLastRound = round === config.rounds;
+    if (!isLastRound) {
       phases.push({
         type: "rest",
-        durationSeconds: set.restSeconds,
+        durationSeconds: config.restSeconds,
         round,
-        totalRounds: set.rounds,
+        totalRounds: config.rounds,
       });
     }
   }
@@ -115,28 +100,31 @@ export function toPhases(set) {
 }
 
 /**
- * @param {TimerSet} set
+ * @param {TimerConfig} config
  * @returns {number}
  */
-export function totalDurationSeconds(set) {
-  return toPhases(set).reduce((sum, phase) => sum + phase.durationSeconds, 0);
+export function totalDurationSeconds(config) {
+  return toPhases(config).reduce((sum, phase) => sum + phase.durationSeconds, 0);
 }
 
 /**
  * @param {unknown} value
- * @returns {TimerSet | null}
+ * @returns {TimerConfig | null}
  */
-export function normalizeStoredSet(value) {
+export function normalizeStoredConfig(value) {
   if (!value || typeof value !== "object") return null;
 
   const record = /** @type {Record<string, unknown>} */ (value);
-  const result = createTimerSet({
-    id: typeof record.id === "string" ? record.id : undefined,
-    name: typeof record.name === "string" ? record.name : undefined,
-    workSecondsTotal: record.workSeconds,
-    restSecondsTotal: record.restSeconds,
+  if (
+    typeof record.workSeconds !== "number" &&
+    typeof record.workSeconds !== "string"
+  ) {
+    return null;
+  }
+
+  return createConfig({
+    workSeconds: record.workSeconds,
+    restSeconds: record.restSeconds,
     rounds: record.rounds,
   });
-
-  return result.ok ? result.set : null;
 }

@@ -65,3 +65,8 @@ h5,
 h6 {
   text-wrap: balance;
 }
+
+/* 10. Prevent zoom on touch devices */
+button {
+  touch-action: manipulation;
+}

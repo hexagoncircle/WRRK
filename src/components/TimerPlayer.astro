@@ -1,15 +1,53 @@
 ---
+const { class: className, ...rest } = Astro.props;
 ---
 
-<section data-timer-player>
-	<p data-player-phase>No set loaded</p>
-	<p data-player-time>—</p>
-	<p data-player-round></p>
+<article class:list={["timer-player", className]} data-player data-status="idle" {...rest}>
+  <p class="time">0:00</p>
+  <div class="status">
+    <p class="round">Round <span>0</span>/<span>0</span></p>
+    <p class="phase">Loading</p>
+  </div>
 
-	<div>
-		<button type="button" data-player-play-pause disabled>Play</button>
-		<button type="button" data-player-reset disabled>Reset</button>
-	</div>
+  <div class="controls">
+    <button type="button" class="play-pause">Start</button>
+    <button type="button" class="reset">Reset</button>
+  </div>
+</article>
 
-	<button type="button" data-back-to-build>Back to sets</button>
-</section>
+<style>
+  .timer-player {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .status {
+    display: flex;
+    gap: 2rem;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .time {
+    font-size: clamp(5rem, 30vmin, 10rem);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    min-height: 1lh;
+  }
+
+  .round {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .controls {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  [data-status="idle"] .time {
+    opacity: 0.2;
+  }
+</style>

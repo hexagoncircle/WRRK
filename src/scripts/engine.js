@@ -1,8 +1,18 @@
 import { Temporal } from "@js-temporal/polyfill";
-import { PREPARE_SECONDS, toPhases } from "./model.js";
+import { READY_COUNT, toPhases } from "./model.js";
 
-/** @typedef {import('./model.js').TimerSet} TimerSet */
+/** @typedef {import('./model.js').TimerConfig} TimerConfig */
 /** @typedef {import('./model.js').Phase} Phase */
+
+export const STATUS = {
+  running: "running",
+  preparing: "preparing",
+  complete: "complete",
+  paused: "paused",
+  idle: "idle",
+};
+
+/** @typedef {typeof STATUS[keyof typeof STATUS]} EngineStatus */
 
 /**
  * Drift-free interval engine.
@@ -10,22 +20,22 @@ import { PREPARE_SECONDS, toPhases } from "./model.js";
  */
 export class TimerEngine extends EventTarget {
   /**
-   * @param {TimerSet} timerSet
+   * @param {TimerConfig} config
    */
-  constructor(timerSet) {
+  constructor(config) {
     super();
-    this.timerSet = timerSet;
+    this.config = config;
     /** @type {Phase[]} */
-    this.phases = toPhases(timerSet);
+    this.phases = toPhases(config);
     /** @type {number} */
     this.phaseIndex = -1;
-    /** @type {'idle' | 'preparing' | 'running' | 'paused' | 'complete'} */
-    this.status = "idle";
+    /** @type {EngineStatus} */
+    this.status = STATUS.idle;
     /** @type {Temporal.Duration | null} */
     this.remaining = null;
     /** @type {Temporal.Instant | null} */
     this.phaseEndInstant = null;
-    /** @type {'preparing' | 'running' | null} */
+    /** @type {typeof STATUS.preparing | typeof STATUS.running | null} */
     this._pausedFrom = null;
     /** @type {Worker | null} */
     this._worker = null;
@@ -39,18 +49,18 @@ export class TimerEngine extends EventTarget {
   }
 
   start() {
-    if (this.status === "running" || this.status === "preparing") return;
-    if (this.status === "complete") return;
+    if (this.status === STATUS.running || this.status === STATUS.preparing) return;
+    if (this.status === STATUS.complete) return;
 
-    if (this.status === "paused" && this.remaining) {
-      this.status = this._pausedFrom ?? "running";
+    if (this.status === STATUS.paused && this.remaining) {
+      this.status = this._pausedFrom ?? STATUS.running;
       this._pausedFrom = null;
       this._scheduleEnd(this.remaining);
       this.remaining = null;
     } else {
       this.phaseIndex = -1;
-      this.status = "preparing";
-      this._scheduleEnd(Temporal.Duration.from({ seconds: PREPARE_SECONDS }));
+      this.status = STATUS.preparing;
+      this._scheduleEnd(Temporal.Duration.from({ seconds: READY_COUNT }));
       this._emitPhaseChange();
     }
 
@@ -58,12 +68,12 @@ export class TimerEngine extends EventTarget {
   }
 
   pause() {
-    if (this.status !== "running" && this.status !== "preparing") return;
+    if (this.status !== STATUS.running && this.status !== STATUS.preparing) return;
     if (!this.phaseEndInstant) return;
 
     this.remaining = Temporal.Now.instant().until(this.phaseEndInstant);
     this._pausedFrom = this.status;
-    this.status = "paused";
+    this.status = STATUS.paused;
     this._stopTicking();
     this.dispatchEvent(new CustomEvent("pause"));
   }
@@ -71,7 +81,7 @@ export class TimerEngine extends EventTarget {
   reset() {
     this._disposeWorker();
     this.phaseIndex = -1;
-    this.status = "idle";
+    this.status = STATUS.idle;
     this.remaining = null;
     this.phaseEndInstant = null;
     this._pausedFrom = null;
@@ -96,14 +106,14 @@ export class TimerEngine extends EventTarget {
     this.remaining = null;
 
     if (this.phaseIndex >= this.phases.length) {
-      this.status = "complete";
+      this.status = STATUS.complete;
       this.phaseEndInstant = null;
       this._disposeWorker();
       this.dispatchEvent(new CustomEvent("complete"));
       return;
     }
 
-    this.status = "running";
+    this.status = STATUS.running;
     const phase = this.currentPhase;
     this._scheduleEnd(
       Temporal.Duration.from({ seconds: phase.durationSeconds }),
@@ -113,16 +123,16 @@ export class TimerEngine extends EventTarget {
   }
 
   _emitPhaseChange() {
-    if (this.status === "preparing") {
+    if (this.status === STATUS.preparing) {
       this.dispatchEvent(
         new CustomEvent("phase-change", {
           detail: {
-            status: "preparing",
+            status: STATUS.preparing,
             phase: null,
             index: -1,
             total: this.phases.length,
             round: null,
-            totalRounds: this.timerSet.rounds,
+            totalRounds: this.config.rounds,
           },
         }),
       );
@@ -138,7 +148,7 @@ export class TimerEngine extends EventTarget {
           index: this.phaseIndex,
           total: this.phases.length,
           round: phase?.round ?? null,
-          totalRounds: this.timerSet.rounds,
+          totalRounds: this.config.rounds,
         },
       }),
     );
@@ -149,7 +159,7 @@ export class TimerEngine extends EventTarget {
    * worker's steady interval; the `event` argument (a MessageEvent) is unused.
    */
   _tick() {
-    if (this.status !== "running" && this.status !== "preparing") return;
+    if (this.status !== STATUS.running && this.status !== STATUS.preparing) return;
     if (!this.phaseEndInstant) return;
 
     const now = Temporal.Now.instant();
@@ -157,7 +167,7 @@ export class TimerEngine extends EventTarget {
 
     // Catch up through any phases that ended while the tab was throttled.
     while (
-      (this.status === "running" || this.status === "preparing") &&
+      (this.status === STATUS.running || this.status === STATUS.preparing) &&
       this.phaseEndInstant &&
       now.until(this.phaseEndInstant).total("seconds") <= 0
     ) {
@@ -165,14 +175,14 @@ export class TimerEngine extends EventTarget {
       // Stay silent while skipping expired phases; announce the phase we land on.
       this._advancePhase(endedAt, { silent: true });
       advanced = true;
-      if (this.status === "complete") return;
+      if (this.status === STATUS.complete) return;
     }
 
-    if (advanced && (this.status === "running" || this.status === "preparing")) {
+    if (advanced && (this.status === STATUS.running || this.status === STATUS.preparing)) {
       this._emitPhaseChange();
     }
 
-    if (this.status !== "running" && this.status !== "preparing") return;
+    if (this.status !== STATUS.running && this.status !== STATUS.preparing) return;
     if (!this.phaseEndInstant) return;
 
     const secondsLeft = now.until(this.phaseEndInstant).total("seconds");
@@ -185,7 +195,7 @@ export class TimerEngine extends EventTarget {
           status: this.status,
           phase,
           round: phase?.round ?? null,
-          totalRounds: this.timerSet.rounds,
+          totalRounds: this.config.rounds,
         },
       }),
     );

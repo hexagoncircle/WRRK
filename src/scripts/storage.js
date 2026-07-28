@@ -1,50 +1,27 @@
-import { normalizeStoredSet } from "./model.js";
+import { createConfig, DEFAULT_CONFIG, normalizeStoredConfig } from "./model.js";
 
-/** @typedef {import('./model.js').TimerSet} TimerSet */
+/** @typedef {import('./model.js').TimerConfig} TimerConfig */
 
-const STORAGE_KEY = "interval-timer:sets";
+const STORAGE_KEY = "interval-timer:config";
 
 /**
- * @returns {TimerSet[]}
+ * @returns {TimerConfig}
  */
-export function loadSets() {
+export function loadConfig() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) return createConfig(DEFAULT_CONFIG);
 
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.map(normalizeStoredSet).filter(/** @type {(s: TimerSet | null) => s is TimerSet} */ (s) => s != null);
+    return normalizeStoredConfig(parsed) ?? createConfig(DEFAULT_CONFIG);
   } catch {
-    return [];
+    return createConfig(DEFAULT_CONFIG);
   }
 }
 
 /**
- * @param {TimerSet[]} sets
+ * @param {TimerConfig} config
  */
-export function saveSets(sets) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sets));
-}
-
-/**
- * @param {TimerSet} set
- * @returns {TimerSet[]}
- */
-export function addSet(set) {
-  const sets = loadSets();
-  sets.push(set);
-  saveSets(sets);
-  return sets;
-}
-
-/**
- * @param {string} id
- * @returns {TimerSet[]}
- */
-export function deleteSet(id) {
-  const sets = loadSets().filter((set) => set.id !== id);
-  saveSets(sets);
-  return sets;
+export function saveConfig(config) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(createConfig(config)));
 }

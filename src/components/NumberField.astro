@@ -1,0 +1,117 @@
+---
+import { formatMSS } from "../scripts/format.js";
+
+interface Props {
+  label: string;
+  name: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  /** When true, show and edit as M:SS with digit-shift entry. */
+  duration?: boolean;
+}
+
+const { label, name, value, min, max, step, duration = false } = Astro.props;
+const clamped = Math.min(max, Math.max(min, value));
+const inputValue = duration ? formatMSS(clamped) : String(clamped);
+const inputId = `number-field-${name}`;
+const roleDescription = duration ? "Duration" : "Number field";
+---
+
+<div
+  class="number-field"
+  data-number-field
+  data-name={name}
+  data-min={min}
+  data-max={max}
+  data-step={step}
+  data-duration={duration ? "true" : "false"}
+>
+  <div class="wrapper">
+    <button type="button" class="decrement" aria-label={`Decrease ${label}`} tabindex="-1">
+      −
+    </button>
+    <input
+      id={inputId}
+      class="input"
+      type="text"
+      name={name}
+      value={inputValue}
+      inputmode="numeric"
+      autocomplete="off"
+      spellcheck="false"
+      aria-roledescription={roleDescription}
+    />
+    <button type="button" class="increment" aria-label={`Increase ${label}`} tabindex="-1">
+      +
+    </button>
+  </div>
+  <label class="label" for={inputId}>{label}</label>
+</div>
+
+<style>
+  .number-field {
+    text-align: center;
+    inline-size: 100%;
+    display: grid;
+    justify-content: center;
+    gap: 0.5rem;
+    /* Leave room above the keyboard when scrollIntoView centers the field. */
+    scroll-margin-block: 25vh;
+  }
+
+  .wrapper {
+    display: grid;
+    grid-template-columns: 1fr 4ch 1fr;
+    border-radius: 0.25rem;
+    border: 1px solid transparent;
+  }
+
+  .input {
+    all: unset;
+    outline: revert;
+    width: 4ch;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    background: transparent;
+    outline: none;
+    caret-color: transparent;
+  }
+
+  .label {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  button {
+    all: unset;
+    outline: revert;
+    padding: 1rem;
+    cursor: pointer;
+    opacity: 0;
+    touch-action: manipulation;
+  }
+
+  .wrapper:not([data-disabled]):focus-within {
+    border: 1px solid;
+  }
+
+  .wrapper:not([data-disabled]):focus-within button {
+    opacity: 1;
+  }
+
+  [data-disabled] {
+    opacity: 0.5;
+  }
+
+  @media (hover: hover) {
+    .wrapper:not([data-disabled]):hover button {
+      opacity: 1;
+    }
+    .wrapper:not([data-disabled]):hover {
+      border-color: currentColor;
+    }
+  }
+</style>
