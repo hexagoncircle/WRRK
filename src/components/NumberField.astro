@@ -57,18 +57,17 @@ const roleDescription = duration ? "Duration" : "Number field";
     display: grid;
     justify-content: center;
     gap: 0.5rem;
-    /* Leave room above the keyboard when scrollIntoView centers the field. */
     scroll-margin-block: 25vh;
   }
 
   .wrapper {
     display: grid;
     grid-template-columns: 1fr 4ch 1fr;
-    border-radius: 0.25rem;
     border: 1px solid transparent;
+    border-radius: calc(infinity * 1px);
   }
 
-  .input {
+  input {
     all: unset;
     outline: revert;
     width: 4ch;
@@ -78,9 +77,13 @@ const roleDescription = duration ? "Duration" : "Number field";
     background: transparent;
     outline: none;
     caret-color: transparent;
+
+    &::selection {
+      background-color: oklch(92.9% 0.013 255.508);
+    }
   }
 
-  .label {
+  label {
     grid-row: 2;
     grid-column: 1 / -1;
   }
@@ -88,18 +91,19 @@ const roleDescription = duration ? "Duration" : "Number field";
   button {
     all: unset;
     outline: revert;
-    padding: 1rem;
+    padding: 0.75rem 1rem;
     cursor: pointer;
     opacity: 0;
     touch-action: manipulation;
   }
 
   .wrapper:not([data-disabled]):focus-within {
-    border: 1px solid;
-  }
+    background-color: oklch(98.4% 0.003 247.858);
+    border-color: oklch(92.9% 0.013 255.508);
 
-  .wrapper:not([data-disabled]):focus-within button {
-    opacity: 1;
+    button {
+      opacity: 1;
+    }
   }
 
   [data-disabled] {
@@ -111,7 +115,8 @@ const roleDescription = duration ? "Duration" : "Number field";
       opacity: 1;
     }
     .wrapper:not([data-disabled]):hover {
-      border-color: currentColor;
+      background-color: oklch(98.4% 0.003 247.858);
+      border-color: oklch(92.9% 0.013 255.508);
     }
   }
 </style>
