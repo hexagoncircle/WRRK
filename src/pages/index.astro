@@ -29,6 +29,7 @@ import {
     <meta name="description" content="A simple interval timer for workouts." />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>Interval Timer</title>
+    <link rel="stylesheet" href="https://use.typekit.net/yys8fwy.css" />
   </head>
   <body>
     <main class="screen" data-app-root>
@@ -36,7 +37,7 @@ import {
       <fieldset class="controls">
         <legend class="sr-only">Controls</legend>
         <NumberField
-          label="Work"
+          label="work"
           name="workSeconds"
           value={DEFAULT_CONFIG.workSeconds}
           min={DURATION_MIN}
@@ -45,7 +46,7 @@ import {
           duration
         />
         <NumberField
-          label="Rest"
+          label="rest"
           name="restSeconds"
           value={DEFAULT_CONFIG.restSeconds}
           min={DURATION_MIN}
@@ -54,7 +55,7 @@ import {
           duration
         />
         <NumberField
-          label="Rounds"
+          label="rounds"
           name="rounds"
           value={DEFAULT_CONFIG.rounds}
           min={1}
@@ -80,29 +81,16 @@ import {
 </html>
 
 <style>
-  html {
-    height: 100%;
-  }
-
-  body {
-    display: flex;
-    width: 100%;
-    /* min-height (not height) so the page can scroll when the keyboard shrinks the viewport. */
-    min-height: 100%;
-  }
-
   .screen {
     display: flex;
     flex-direction: column-reverse;
-    margin: auto;
     gap: 2rem;
     width: 100%;
     min-height: 100%;
-    justify-content: center;
-    align-items: center;
   }
 
   .controls {
+    align-self: center;
     border: none;
     row-gap: 2rem;
     padding: 0;
@@ -111,10 +99,6 @@ import {
     display: flex;
     justify-content: center;
     align-items: center;
-  }
-
-  .player {
-    flex: 1 1 20rem;
   }
 
   @media (height < 30rem) {

@@ -1,17 +1,17 @@
-import { enhanceNumberFields } from "../components/number-field.js";
-import { enhancePlayer } from "../components/player.js";
+import { enhanceNumberFields } from "./number-field.js";
+import { enhancePlayer } from "./player.js";
 import { createConfig } from "./model.js";
 import { loadConfig, saveConfig } from "./storage.js";
 
 function main() {
-  const appRoot = document.querySelector("[data-app-root]");
-  const playerRoot = document.querySelector("[data-player]");
+  const $appRoot = document.querySelector("[data-app-root]");
+  const $player = document.querySelector("[data-player]");
 
-  if (!(appRoot instanceof HTMLElement) || !(playerRoot instanceof HTMLElement)) {
+  if (!($appRoot instanceof HTMLElement) || !($player instanceof HTMLElement)) {
     return;
   }
 
-  const fields = enhanceNumberFields(appRoot);
+  const fields = enhanceNumberFields($appRoot);
   const fieldByName = new Map(fields.map((field) => [field.name, field]));
 
   const initial = loadConfig();
@@ -38,14 +38,14 @@ function main() {
     }
   };
 
-  const player = enhancePlayer(playerRoot, {
+  const player = enhancePlayer($player, {
     getConfig: readConfig,
     onRunningChange: setFieldsDisabled,
   });
 
   if (!player) return;
 
-  appRoot.addEventListener("number-field-change", () => {
+  $appRoot.addEventListener("number-field-change", () => {
     const config = readConfig();
     saveConfig(config);
 

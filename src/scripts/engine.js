@@ -57,6 +57,7 @@ export class TimerEngine extends EventTarget {
       this._pausedFrom = null;
       this._scheduleEnd(this.remaining);
       this.remaining = null;
+      this.dispatchEvent(new CustomEvent("resume", { detail: this._phaseDetail() }));
     } else {
       this.phaseIndex = -1;
       this.status = STATUS.preparing;
@@ -122,36 +123,22 @@ export class TimerEngine extends EventTarget {
     if (!options.silent) this._emitPhaseChange();
   }
 
-  _emitPhaseChange() {
-    if (this.status === STATUS.preparing) {
-      this.dispatchEvent(
-        new CustomEvent("phase-change", {
-          detail: {
-            status: STATUS.preparing,
-            phase: null,
-            index: -1,
-            total: this.phases.length,
-            round: null,
-            totalRounds: this.config.rounds,
-          },
-        }),
-      );
-      return;
-    }
+  _phaseDetail() {
+    const preparing = this.status === STATUS.preparing;
+    const phase = preparing ? null : this.currentPhase;
 
-    const phase = this.currentPhase;
-    this.dispatchEvent(
-      new CustomEvent("phase-change", {
-        detail: {
-          status: this.status,
-          phase,
-          index: this.phaseIndex,
-          total: this.phases.length,
-          round: phase?.round ?? null,
-          totalRounds: this.config.rounds,
-        },
-      }),
-    );
+    return {
+      status: this.status,
+      phase,
+      index: preparing ? -1 : this.phaseIndex,
+      total: this.phases.length,
+      round: phase?.round ?? null,
+      totalRounds: this.config.rounds,
+    };
+  }
+
+  _emitPhaseChange() {
+    this.dispatchEvent(new CustomEvent("phase-change", { detail: this._phaseDetail() }));
   }
 
   /**

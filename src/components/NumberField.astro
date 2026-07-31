@@ -76,10 +76,10 @@ const roleDescription = duration ? "Duration" : "Number field";
     text-align: center;
     background: transparent;
     outline: none;
-    caret-color: transparent;
+    /* caret-color: transparent; */
 
     &::selection {
-      background-color: oklch(92.9% 0.013 255.508);
+      /* background-color: oklch(92.9% 0.013 255.508); */
     }
   }
 
@@ -92,14 +92,16 @@ const roleDescription = duration ? "Duration" : "Number field";
     all: unset;
     outline: revert;
     padding: 0.75rem 1rem;
-    cursor: pointer;
     opacity: 0;
     touch-action: manipulation;
+
+    &:not(:disabled) {
+      cursor: pointer;
+    }
   }
 
   .wrapper:not([data-disabled]):focus-within {
-    background-color: oklch(98.4% 0.003 247.858);
-    border-color: oklch(92.9% 0.013 255.508);
+    border-color: currentColor;
 
     button {
       opacity: 1;
@@ -111,12 +113,13 @@ const roleDescription = duration ? "Duration" : "Number field";
   }
 
   @media (hover: hover) {
-    .wrapper:not([data-disabled]):hover button {
-      opacity: 1;
-    }
-    .wrapper:not([data-disabled]):hover {
-      background-color: oklch(98.4% 0.003 247.858);
-      border-color: oklch(92.9% 0.013 255.508);
+    .number-field:not([data-disabled]) {
+      .wrapper:hover {
+        border-color: currentColor;
+      }
+      .wrapper:hover button {
+        opacity: 1;
+      }
     }
   }
 </style>

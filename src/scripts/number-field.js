@@ -1,57 +1,33 @@
-import { formatMSS } from "../scripts/format.js";
+import { formatMSS } from "./format.js";
 
-/**
- * Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345).
- * @param {number} totalSeconds
- * @returns {number}
- */
+/** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
 function secondsToMss(totalSeconds) {
   const safe = Math.max(0, Math.trunc(totalSeconds));
-  const minutes = Math.floor(safe / 60);
-  const seconds = safe % 60;
-  return minutes * 100 + seconds;
+  return Math.floor(safe / 60) * 100 + (safe % 60);
 }
 
-/**
- * Decode an M SS digit buffer to total seconds (e.g. 345 → 225).
- * Seconds may be > 59; callers normalize on commit via formatMSS.
- * @param {number} mss
- * @returns {number}
- */
-function mssToSeconds(mss) {
+function splitMss(mss) {
   const safe = Math.max(0, Math.trunc(mss));
-  const minutes = Math.floor(safe / 100);
-  const seconds = safe % 100;
+  return [Math.floor(safe / 100), safe % 100];
+}
+
+/** Decode an M SS digit buffer to total seconds (e.g. 345 → 225). */
+function mssToSeconds(mss) {
+  const [minutes, seconds] = splitMss(mss);
   return minutes * 60 + seconds;
 }
 
-/**
- * Format a digit buffer as M:SS without normalizing seconds (e.g. 569 → "5:69").
- * @param {number} mss
- * @returns {string}
- */
+/** Format digit buffer as M:SS without normalizing seconds (e.g. 569 → "5:69"). */
 function formatMssBuffer(mss) {
-  const safe = Math.max(0, Math.trunc(mss));
-  const minutes = Math.floor(safe / 100);
-  const seconds = safe % 100;
+  const [minutes, seconds] = splitMss(mss);
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-/**
- * @param {number} value
- * @param {number} lo
- * @param {number} hi
- * @returns {number}
- */
 function clamp(value, lo, hi) {
   if (!Number.isFinite(value)) return lo;
   return Math.min(hi, Math.max(lo, Math.trunc(value)));
 }
 
-/**
- * @param {string} text
- * @returns {number | null}
- */
 function parseDurationInput(text) {
   const match = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
   if (!match) return null;
@@ -66,7 +42,6 @@ function parseDurationInput(text) {
  * iOS Safari often skips its avoidance scroll when focus handlers mutate
  * value/selection; typing then forces a layout pass. Re-run on visualViewport
  * resize so we catch the keyboard inset after it animates in.
- * @param {HTMLInputElement} input
  */
 function revealFocusedInput(input) {
   const run = () => {
@@ -82,17 +57,15 @@ function revealFocusedInput(input) {
 
   const onViewportResize = () => run();
   vv.addEventListener("resize", onViewportResize);
-  input.addEventListener(
-    "blur",
-    () => {
-      vv.removeEventListener("resize", onViewportResize);
-    },
-    { once: true },
-  );
+  input.addEventListener("blur", () => vv.removeEventListener("resize", onViewportResize), {
+    once: true,
+  });
 }
 
+const supportsBeforeInput =
+  typeof InputEvent !== "undefined" && "inputType" in InputEvent.prototype;
+
 /**
- * Progressive enhancement for a NumberField control.
  * @param {HTMLElement} root
  */
 export function enhanceNumberField(root) {
@@ -114,60 +87,38 @@ export function enhanceNumberField(root) {
   const isDuration = root.dataset.duration === "true";
   const name = root.dataset.name ?? $input.name;
 
-  /** @type {number} Committed numeric value (seconds or count). */
   let value = isDuration
     ? clamp(parseDurationInput($input.value) ?? min, min, max)
     : clamp(Number.parseInt($input.value, 10), min, max);
 
-  /** @type {number} M SS digit buffer while editing durations. */
   let digitBuffer = secondsToMss(value);
-  /** @type {string} Draft text for non-duration fields while focused. */
   let draftText = String(value);
-  /** Next digit replaces the buffer (select-to-type a new duration). */
+  /** Next digit replaces the buffer (select-to-type a new value). */
   let replaceOnNextDigit = false;
 
-  /**
-   * @param {number} next
-   * @returns {string}
-   */
   const formatValue = (next) => (isDuration ? formatMSS(next) : String(next));
-
-  /**
-   * @returns {boolean}
-   */
+  const isDisabled = () => root.hasAttribute("data-disabled");
   const isFullySelected = () =>
     $input.selectionStart === 0 && $input.selectionEnd === $input.value.length;
+  const inputFocused = () => document.activeElement === $input;
 
-  /**
-   * @param {number} next
-   */
   const syncButtons = (next) => {
-    const disabled = root.hasAttribute("data-disabled");
+    const disabled = isDisabled();
     $decrement.disabled = disabled || next <= min;
     $increment.disabled = disabled || next + step > max;
     $input.disabled = disabled;
   };
 
-  /**
-   * Show formatted text in the input without committing.
-   * @param {number} next
-   */
-  const renderInput = (next) => {
-    $input.value = formatValue(next);
-  };
-
-  /**
-   * @param {number} next
-   * @param {{ silent?: boolean }} [options]
-   */
-  const setValue = (next, options = {}) => {
-    value = clamp(next, min, max);
+  const setValue = (next, { silent = false } = {}) => {
+    const clamped = clamp(next, min, max);
+    const changed = clamped !== value;
+    value = clamped;
     digitBuffer = secondsToMss(value);
     draftText = String(value);
-    renderInput(value);
+    $input.value = formatValue(value);
     syncButtons(value);
 
-    if (!options.silent) {
+    if (!silent && changed) {
       root.dispatchEvent(
         new CustomEvent("number-field-change", {
           detail: { name, value },
@@ -177,49 +128,29 @@ export function enhanceNumberField(root) {
     }
   };
 
-  /**
-   * Read the in-progress draft; empty/invalid rounds keep the previous value.
-   * Duration allows unnormalized seconds (e.g. 5:69) and converts on commit.
-   * @returns {number}
-   */
+  /** Empty/invalid drafts keep the previous value. Duration allows unnormalized seconds. */
   const readDraft = () => {
     if (isDuration) return mssToSeconds(digitBuffer);
     const parsed = Number.parseInt(draftText || $input.value, 10);
     return Number.isFinite(parsed) ? parsed : value;
   };
 
-  /**
-   * After commit while still editing: next typed digit starts a new value.
-   */
   const armReplace = () => {
     replaceOnNextDigit = true;
-    if (isDuration) {
-      $input.value = formatMssBuffer(digitBuffer);
-    }
+    if (isDuration) $input.value = formatMssBuffer(digitBuffer);
   };
 
-  /**
-   * @returns {number}
-   */
-  const getValue = () => value;
-
-  /**
-   * @param {boolean} disabled
-   */
   const setDisabled = (disabled) => {
     if (disabled) root.setAttribute("data-disabled", "");
     else root.removeAttribute("data-disabled");
     syncButtons(value);
   };
 
-  /**
-   * Commit draft, then step — single change event.
-   * @param {number} delta
-   */
+  /** Commit draft, then step — single change event. */
   const stepBy = (delta) => {
-    if (root.hasAttribute("data-disabled")) return;
+    if (isDisabled()) return;
     setValue(readDraft() + delta);
-    if (document.activeElement === $input) armReplace();
+    if (inputFocused()) armReplace();
   };
 
   // Keep the input focused (and mobile keyboard open) when using steppers.
@@ -228,14 +159,26 @@ export function enhanceNumberField(root) {
   };
   $decrement.addEventListener("pointerdown", preserveInputFocus);
   $increment.addEventListener("pointerdown", preserveInputFocus);
-
   $decrement.addEventListener("click", () => stepBy(-step));
   $increment.addEventListener("click", () => stepBy(step));
 
-  $input.addEventListener("keydown", (event) => {
-    if (root.hasAttribute("data-disabled")) return;
+  $input.addEventListener("focus", () => {
+    if (isDuration) {
+      digitBuffer = secondsToMss(value);
+      $input.value = formatMssBuffer(digitBuffer);
+    } else {
+      draftText = String(value);
+      $input.value = draftText;
+    }
+    replaceOnNextDigit = true;
+    requestAnimationFrame(() => {
+      if (inputFocused()) revealFocusedInput($input);
+    });
+  });
 
-    // Arrow keys step by 1; Shift+Arrow by 5 (coarser jump, like a larger step).
+  $input.addEventListener("keydown", (event) => {
+    if (isDisabled()) return;
+
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
       const delta = event.shiftKey ? 5 : 1;
@@ -246,23 +189,20 @@ export function enhanceNumberField(root) {
     if (event.key === "Home") {
       event.preventDefault();
       setValue(min);
-      if (document.activeElement === $input) armReplace();
+      if (inputFocused()) armReplace();
       return;
     }
 
     if (event.key === "End") {
       event.preventDefault();
       setValue(max);
-      if (document.activeElement === $input) armReplace();
+      if (inputFocused()) armReplace();
       return;
     }
 
-    if (!isDuration) return;
-
+    // Blur commits; Escape reverts first so blur is a no-op change.
     if (event.key === "Enter") {
       event.preventDefault();
-      setValue(mssToSeconds(digitBuffer));
-      replaceOnNextDigit = false;
       $input.blur();
       return;
     }
@@ -271,15 +211,17 @@ export function enhanceNumberField(root) {
       event.preventDefault();
       replaceOnNextDigit = false;
       digitBuffer = secondsToMss(value);
-      renderInput(value);
+      draftText = String(value);
+      $input.value = formatValue(value);
       $input.blur();
     }
   });
 
   if (isDuration) {
-    /**
-     * @param {number} digit 0-9
-     */
+    const renderBuffer = () => {
+      $input.value = formatMssBuffer(digitBuffer);
+    };
+
     const pushDigit = (digit) => {
       if (replaceOnNextDigit || isFullySelected()) {
         digitBuffer = digit;
@@ -287,7 +229,7 @@ export function enhanceNumberField(root) {
       } else {
         digitBuffer = (digitBuffer % 100) * 10 + digit;
       }
-      $input.value = formatMssBuffer(digitBuffer);
+      renderBuffer();
     };
 
     const popDigit = () => {
@@ -297,21 +239,11 @@ export function enhanceNumberField(root) {
       } else {
         digitBuffer = Math.floor(digitBuffer / 10);
       }
-      $input.value = formatMssBuffer(digitBuffer);
+      renderBuffer();
     };
 
-    $input.addEventListener("focus", () => {
-      digitBuffer = secondsToMss(value);
-      $input.value = formatMssBuffer(digitBuffer);
-      replaceOnNextDigit = true;
-      requestAnimationFrame(() => {
-        if (document.activeElement !== $input) return;
-        revealFocusedInput($input);
-      });
-    });
-
     $input.addEventListener("beforeinput", (event) => {
-      if (root.hasAttribute("data-disabled")) {
+      if (isDisabled()) {
         event.preventDefault();
         return;
       }
@@ -332,40 +264,31 @@ export function enhanceNumberField(root) {
     });
 
     // Fallback when beforeinput is unavailable.
-    $input.addEventListener("keydown", (event) => {
-      if (root.hasAttribute("data-disabled")) return;
-      if (typeof InputEvent !== "undefined" && "inputType" in InputEvent.prototype) return;
+    if (!supportsBeforeInput) {
+      $input.addEventListener("keydown", (event) => {
+        if (isDisabled()) return;
 
-      if (event.key >= "0" && event.key <= "9") {
-        if (event.repeat) return;
-        event.preventDefault();
-        pushDigit(Number(event.key));
-        return;
-      }
+        if (event.key >= "0" && event.key <= "9") {
+          if (event.repeat) return;
+          event.preventDefault();
+          pushDigit(Number(event.key));
+          return;
+        }
 
-      if (event.key === "Backspace") {
-        event.preventDefault();
-        popDigit();
-      }
-    });
+        if (event.key === "Backspace") {
+          event.preventDefault();
+          popDigit();
+        }
+      });
+    }
 
     $input.addEventListener("blur", () => {
       replaceOnNextDigit = false;
       setValue(mssToSeconds(digitBuffer));
     });
   } else {
-    $input.addEventListener("focus", () => {
-      draftText = String(value);
-      $input.value = draftText;
-      replaceOnNextDigit = true;
-      requestAnimationFrame(() => {
-        if (document.activeElement !== $input) return;
-        revealFocusedInput($input);
-      });
-    });
-
     $input.addEventListener("beforeinput", (event) => {
-      if (root.hasAttribute("data-disabled")) {
+      if (isDisabled()) {
         event.preventDefault();
         return;
       }
@@ -385,8 +308,7 @@ export function enhanceNumberField(root) {
 
       if (
         replaceOnNextDigit &&
-        (event.inputType === "deleteContentBackward" ||
-          event.inputType === "deleteContentForward")
+        (event.inputType === "deleteContentBackward" || event.inputType === "deleteContentForward")
       ) {
         event.preventDefault();
         draftText = "";
@@ -395,7 +317,6 @@ export function enhanceNumberField(root) {
         return;
       }
 
-      // Allow native editing; filter non-digits on insert.
       if (event.inputType === "insertText" && event.data && /\D/.test(event.data)) {
         event.preventDefault();
       }
@@ -406,35 +327,16 @@ export function enhanceNumberField(root) {
       if ($input.value !== draftText) $input.value = draftText;
     });
 
-    const commitDraft = () => {
+    $input.addEventListener("blur", () => {
       replaceOnNextDigit = false;
       setValue(readDraft());
-    };
-
-    $input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        commitDraft();
-        $input.blur();
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        replaceOnNextDigit = false;
-        draftText = String(value);
-        $input.value = draftText;
-        $input.blur();
-      }
     });
-
-    $input.addEventListener("blur", commitDraft);
   }
 
   setValue(value, { silent: true });
 
   return {
-    getValue,
+    getValue: () => value,
     setValue: (next) => setValue(next, { silent: true }),
     setDisabled,
     get name() {
@@ -447,7 +349,6 @@ export function enhanceNumberField(root) {
  * @param {ParentNode} [scope]
  */
 export function enhanceNumberFields(scope = document) {
-  /** @type {ReturnType<typeof enhanceNumberField>[]} */
   const fields = [];
   for (const root of scope.querySelectorAll("[data-number-field]")) {
     if (!(root instanceof HTMLElement)) continue;
