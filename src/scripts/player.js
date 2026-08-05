@@ -1,7 +1,12 @@
 import { Temporal } from "@js-temporal/polyfill";
+import { cancelDigitDance, playDigitDance, playPrepareCountdown } from "./digit-dance.js";
 import { STATUS, TimerEngine } from "./engine.js";
 import { formatMSS } from "./format.js";
+import { READY_COUNT } from "./model.js";
 import { NotificationController } from "./notifications.js";
+import { createCounterRing } from "./counter-ring.js";
+import { createPhaseLabel } from "./phase-label.js";
+import { createProgressRing } from "./progress-ring.js";
 import { WakeLockController } from "./wake-lock.js";
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
@@ -20,7 +25,7 @@ const LABEL = {
   start: "Start",
   resume: "Resume",
   pause: "Pause",
-  idle: "Setup",
+  idle: "Start",
   prepare: "Get ready",
   paused: "Paused",
   complete: "Complete",
@@ -45,19 +50,45 @@ function formatDurationAttr(totalSeconds) {
  * @param {HTMLElement} root
  * @param {{
  *   getConfig: () => TimerConfig,
+ *   attrsRoot?: HTMLElement,
  *   onRunningChange?: (running: boolean) => void,
  * }} options
  */
 export function enhancePlayer(root, options) {
+  const attrsRoot = options.attrsRoot ?? root;
   const $time = root.querySelector(".time");
   const $digits = root.querySelectorAll("[data-digit]");
-  const $roundOutput = root.querySelector(".round-output");
+  const $roundLabel = root.querySelector(".round-label");
   const $roundCurrent = root.querySelector(".round-current");
-  const $roundTotal = root.querySelector(".round-total");
   const $phase = root.querySelector(".phase");
+  const phaseLabel = createPhaseLabel(/** @type {HTMLElement} */ ($phase));
   const $playback = root.querySelector(".playback");
   const $playbackLabel = $playback.querySelector(".label");
   const $reset = root.querySelector(".reset");
+
+  const $progressRing = attrsRoot.querySelector(".progress-ring");
+  const progressRing =
+    $progressRing instanceof HTMLElement ? createProgressRing($progressRing) : null;
+
+  const $counterRing = attrsRoot.querySelector(".counter-ring");
+  const counterRing = $counterRing instanceof HTMLElement ? createCounterRing($counterRing) : null;
+
+  /** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
+  let prepareTimeline = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let completeTimer = null;
+
+  const clearCompleteTimer = () => {
+    if (completeTimer == null) return;
+    clearTimeout(completeTimer);
+    completeTimer = null;
+  };
+
+  /**
+   * @param {string} text
+   * @param {{ tone?: 'work' | 'rest' | null, animate?: boolean, from?: 'bottom' | 'top' }} [opts]
+   */
+  const setPhaseLabel = (text, opts) => phaseLabel.set(text, opts);
 
   /** @param {string} text */
   const setPlaybackLabel = (text) => {
@@ -85,14 +116,20 @@ export function enhancePlayer(root, options) {
     $time.setAttribute("aria-label", label);
   };
 
+  /** @param {number} n */
+  const setPrepareLabel = (n) => {
+    $time.dateTime = `PT${n}S`;
+    $time.setAttribute("aria-label", String(n));
+  };
+
   /**
    * @param {number} current
    * @param {number} total
    */
   const setRound = (current, total) => {
-    $roundCurrent.textContent = String(current);
-    $roundTotal.textContent = String(total);
-    $roundOutput.setAttribute("aria-label", `${current} of ${total}`);
+    const pending = !current;
+    $roundLabel.hidden = pending;
+    $roundCurrent.textContent = pending ? "––" : String(current);
   };
 
   /** @type {TimerEngine | null} */
@@ -105,17 +142,73 @@ export function enhancePlayer(root, options) {
   let lastNotifiedKey = null;
   const defaultTitle = document.title;
 
+  const syncRingTotals = () => {
+    progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);
+  };
+
+  /**
+   * Last round has no rest — work arc fills the circle (minus top gap).
+   * @param {Phase | null | undefined} phase
+   */
+  const syncRingGeometryForPhase = (phase) => {
+    if (!progressRing || !phase) return;
+    const lastRound = phase.round === phase.totalRounds;
+    progressRing.setTotals(currentConfig.workSeconds, lastRound ? 0 : currentConfig.restSeconds, {
+      fill: false,
+    });
+  };
+
+  /**
+   * @param {Phase | null | undefined} phase
+   * @param {number} remainingSeconds
+   * @param {{ settle?: boolean }} [opts]
+   */
+  const syncRingProgress = (phase, remainingSeconds, { settle = false } = {}) => {
+    if (!progressRing) return;
+    if (!phase || (phase.type !== "work" && phase.type !== "rest")) {
+      progressRing.reset();
+      return;
+    }
+    progressRing.setProgress(
+      {
+        phase: phase.type,
+        remainingSeconds,
+        durationSeconds: phase.durationSeconds,
+      },
+      { settle },
+    );
+  };
+
+  const resetProgressRing = () => {
+    progressRing?.reset();
+  };
+
+  /** @type {'work' | 'rest' | null} */
+  let lastPhaseType = null;
+
+  /**
+   * @param {Phase | null | undefined} phase
+   */
+  const rememberPhaseType = (phase) => {
+    lastPhaseType = phase?.type === "work" || phase?.type === "rest" ? phase.type : null;
+  };
+
+  const syncCounterIdle = () => {
+    counterRing?.setCount(currentConfig.rounds);
+    counterRing?.showAll();
+  };
+
   const isActive = () =>
     Boolean(engine && (engine.status === STATUS.running || engine.status === STATUS.preparing));
 
   const syncRootAttrs = () => {
-    root.dataset.status = engine?.status ?? STATUS.idle;
+    attrsRoot.dataset.status = engine?.status ?? STATUS.idle;
 
     const phaseType = engine?.currentPhase?.type;
     if (phaseType === "work" || phaseType === "rest") {
-      root.dataset.phase = phaseType;
+      attrsRoot.dataset.phase = phaseType;
     } else {
-      delete root.dataset.phase;
+      delete attrsRoot.dataset.phase;
     }
   };
 
@@ -130,7 +223,29 @@ export function enhancePlayer(root, options) {
   const emitRunningChange = () => {
     syncRootAttrs();
     syncWakeLock();
-    options.onRunningChange?.(isActive());
+    const idle = (engine?.status ?? STATUS.idle) === STATUS.idle;
+    options.onRunningChange?.(!idle);
+  };
+
+  const stopPrepareTimeline = () => {
+    prepareTimeline = null;
+    cancelDigitDance();
+  };
+
+  const syncPrepareTimeline = () => {
+    if (!prepareTimeline || !engine?.phaseEndInstant) return;
+    if (engine.status !== STATUS.preparing) return;
+    const left = Temporal.Now.instant().until(engine.phaseEndInstant).total("seconds");
+    prepareTimeline.time = Math.max(0, READY_COUNT - left);
+  };
+
+  const startPrepareTimeline = () => {
+    stopPrepareTimeline();
+    prepareTimeline = playPrepareCountdown($digits, {
+      count: READY_COUNT,
+      beatSeconds: 1,
+      onBeat: setPrepareLabel,
+    });
   };
 
   /** Show countdown in the tab title while the tab is hidden. */
@@ -141,30 +256,38 @@ export function enhancePlayer(root, options) {
     }
 
     const secondsLeft = Temporal.Now.instant().until(engine.phaseEndInstant).total("seconds");
-    const label = $phase.textContent ?? "";
+    const label = phaseLabel.getText();
     document.title = label ? `${label}: ${formatMSS(secondsLeft)}` : formatMSS(secondsLeft);
   };
 
   const setIdleDisplay = () => {
+    stopPrepareTimeline();
     setTime(currentConfig.workSeconds);
-    setRound(1, currentConfig.rounds);
-    $phase.textContent = LABEL.idle;
+    setRound(0, currentConfig.rounds);
+    setPhaseLabel(LABEL.idle);
     setPlaybackLabel(LABEL.start);
     $playback.disabled = false;
     $reset.disabled = false;
+    syncRingTotals();
+    syncCounterIdle();
     emitRunningChange();
   };
 
+  const lightUpDigits = () => playDigitDance($digits);
+
   /**
    * @param {TimerConfig} [config]
+   * @param {{ lightUp?: boolean }} [options]
    */
-  const loadConfig = (config = options.getConfig()) => {
+  const loadConfig = (config = options.getConfig(), { lightUp = false } = {}) => {
+    clearCompleteTimer();
     currentConfig = config;
     engine?.reset();
     engine = new TimerEngine(config);
     lastNotifiedKey = null;
     bindEngine(engine);
     setIdleDisplay();
+    if (lightUp) lightUpDigits();
   };
 
   /**
@@ -173,42 +296,84 @@ export function enhancePlayer(root, options) {
   const bindEngine = (nextEngine) => {
     nextEngine.addEventListener("phase-change", (event) => {
       const detail = /** @type {CustomEvent<PhaseDetail>} */ (event).detail;
-      renderPhase(detail);
+      renderPhase(detail, {
+        startPrepare: detail.status === STATUS.preparing,
+      });
+      rememberPhaseType(detail.phase);
       maybeNotify(detail);
       emitRunningChange();
     });
 
     nextEngine.addEventListener("tick", (event) => {
-      const detail = /** @type {CustomEvent<{ remainingSeconds: number }>} */ (event).detail;
-      setTime(detail.remainingSeconds);
+      const detail = /** @type {CustomEvent<{
+        remainingSeconds: number,
+        status: string,
+        phase: Phase | null,
+      }>} */ (event).detail;
+      if (detail.status !== STATUS.preparing) {
+        setTime(detail.remainingSeconds);
+        syncRingProgress(detail.phase, detail.remainingSeconds);
+      } else {
+        resetProgressRing();
+      }
       refreshTitle();
     });
 
     nextEngine.addEventListener("resume", (event) => {
-      renderPhase(/** @type {CustomEvent<PhaseDetail>} */ (event).detail);
+      const detail = /** @type {CustomEvent<PhaseDetail>} */ (event).detail;
+      // Keep the ring where pause left it; the next tick continues from there.
+      renderPhase(detail, { syncRing: false });
+      if (detail.status === STATUS.preparing) {
+        if (!prepareTimeline) startPrepareTimeline();
+        syncPrepareTimeline();
+        prepareTimeline?.play();
+      }
       emitRunningChange();
     });
 
     nextEngine.addEventListener("pause", () => {
+      prepareTimeline?.pause();
       setPlaybackLabel(LABEL.resume);
-      $phase.textContent = LABEL.paused;
+      setPhaseLabel(LABEL.paused);
+      // Snap off the led-ahead target so the ring does not keep easing after freeze.
+      if (nextEngine.currentPhase && nextEngine.remaining) {
+        syncRingProgress(nextEngine.currentPhase, nextEngine.remaining.total("seconds"), {
+          settle: true,
+        });
+      }
       emitRunningChange();
       refreshTitle();
     });
 
-    nextEngine.addEventListener("complete", () => {
+    nextEngine.addEventListener("complete", async () => {
+      const wasFinalWork = lastPhaseType === "work";
+      lastPhaseType = null;
+      stopPrepareTimeline();
       setTime(0);
-      $phase.textContent = LABEL.complete;
-      setRound(currentConfig.rounds, currentConfig.rounds);
+      setPhaseLabel(LABEL.complete);
+      setRound(0, currentConfig.rounds);
       setPlaybackLabel(LABEL.start);
-      $playback.disabled = false;
+      $playback.disabled = true;
+      counterRing?.showAll(currentConfig.rounds);
       notifications.notifyPhase("complete");
       emitRunningChange();
       refreshTitle();
+
+      clearCompleteTimer();
+      completeTimer = setTimeout(() => {
+        completeTimer = null;
+        loadConfig(undefined, { lightUp: true });
+      }, 3000);
+
+      // Full rings + CSS pulse on [data-status="complete"] (no between-round clear).
+      if (wasFinalWork) {
+        progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);
+      }
     });
 
     nextEngine.addEventListener("reset", () => {
       lastNotifiedKey = null;
+      lastPhaseType = null;
       setIdleDisplay();
       refreshTitle();
     });
@@ -216,20 +381,31 @@ export function enhancePlayer(root, options) {
 
   /**
    * @param {PhaseDetail} detail
+   * @param {{ startPrepare?: boolean, syncRing?: boolean }} [opts]
    */
-  const renderPhase = (detail) => {
+  const renderPhase = (detail, { startPrepare = false, syncRing = true } = {}) => {
     if (detail.status === STATUS.preparing) {
-      $phase.textContent = LABEL.prepare;
-      setRound(1, detail.totalRounds);
+      setPhaseLabel(LABEL.prepare);
+      if (startPrepare) startPrepareTimeline();
+      if (syncRing) resetProgressRing();
+      counterRing?.clear();
     } else if (detail.phase) {
-      $phase.textContent = LABEL[detail.phase.type] ?? detail.phase.type;
+      stopPrepareTimeline();
+      const type = detail.phase.type;
+      const tone = type === "work" || type === "rest" ? type : null;
+      setPhaseLabel(LABEL[type] ?? type, { tone });
       setRound(detail.round ?? 1, detail.totalRounds);
+      counterRing?.setActive(detail.round ?? 1, detail.totalRounds);
+      if (syncRing) {
+        syncRingGeometryForPhase(detail.phase);
+        syncRingProgress(detail.phase, detail.phase.durationSeconds);
+      }
     } else {
       return;
     }
 
     setPlaybackLabel(LABEL.pause);
-    $playback.disabled = false;
+    $playback.disabled = detail.status === STATUS.preparing;
     refreshTitle();
   };
 
@@ -257,16 +433,12 @@ export function enhancePlayer(root, options) {
   const startPlayback = async () => {
     if (!engine || isActive()) return;
 
-    if (engine.status === STATUS.complete) {
-      loadConfig();
-    }
-
     await notifications.ensurePermission();
     engine.start();
   };
 
   $playback.addEventListener("click", async () => {
-    if (!engine) return;
+    if (!engine || $playback.disabled) return;
 
     if (isActive()) {
       engine.pause();
@@ -277,12 +449,15 @@ export function enhancePlayer(root, options) {
   });
 
   $reset.addEventListener("click", () => {
-    loadConfig();
+    loadConfig(undefined, { lightUp: true });
   });
 
-  document.addEventListener("visibilitychange", refreshTitle);
+  document.addEventListener("visibilitychange", () => {
+    refreshTitle();
+    if (!document.hidden) syncPrepareTimeline();
+  });
 
-  loadConfig(currentConfig);
+  loadConfig(currentConfig, { lightUp: true });
 
   return {
     softReset: loadConfig,

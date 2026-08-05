@@ -1,11 +1,52 @@
+@property --progress-work {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --progress-rest {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --ring-gap {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 5;
+}
+@property --progress-work-percent {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --progress-rest-percent {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+@property --color-digit {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffffff;
+}
+
 :root {
   --color-bg: #1b1b1b;
+  --color-bg-translucent: hsla(0 0% 10.59% / 0.5);
   --color-fg: #ffffff;
   --color-fg-subtle: #323232;
+  --color-fg-muted: #757575;
+  --color-work: #ff1e65;
+  --color-rest: #4effb5;
+  --color-ring: oklch(62.3% 0.214 259.815);
+
   --font-main:
     "futura-pt", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
     Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   --font-display: "overtime-lcd-pro", var(--font-main);
+
+  --ring-gap: 5;
+  --ring-stroke: 9;
+  --ring-r: 45;
 }
 
 html {
@@ -17,7 +58,17 @@ body {
   width: 100%;
   min-height: 100%;
   font-family: var(--font-main);
-  padding: 2rem;
+  padding: 1rem;
   background-color: var(--color-bg);
   color: var(--color-fg);
+}
+
+@keyframes pulse {
+  from,
+  to {
+    --color-digit: var(--color-fg-subtle);
+  }
+  50% {
+    --color-digit: var(--color-fg);
+  }
 }

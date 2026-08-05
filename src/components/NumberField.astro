@@ -1,5 +1,6 @@
 ---
 import { formatMSS } from "../scripts/format.js";
+import { Icon } from "astro-icon/components";
 
 interface Props {
   label: string;
@@ -28,41 +29,60 @@ const roleDescription = duration ? "Duration" : "Number field";
   data-step={step}
   data-duration={duration ? "true" : "false"}
 >
-  <div class="wrapper">
-    <button type="button" class="decrement" aria-label={`Decrease ${label}`} tabindex="-1">
-      −
-    </button>
-    <input
-      id={inputId}
-      class="input"
-      type="text"
-      name={name}
-      value={inputValue}
-      inputmode="numeric"
-      autocomplete="off"
-      spellcheck="false"
-      aria-roledescription={roleDescription}
-    />
-    <button type="button" class="increment" aria-label={`Increase ${label}`} tabindex="-1">
-      +
-    </button>
-  </div>
-  <label class="label" for={inputId}>{label}</label>
+  <label class="label" for={inputId}>
+    <div class="wrapper">
+      <button type="button" class="decrement" aria-label={`Decrease ${label}`} tabindex="-1">
+        <Icon name="minus" aria-hidden="true" />
+      </button>
+      <input
+        id={inputId}
+        class="input"
+        type="text"
+        name={name}
+        value={inputValue}
+        inputmode="numeric"
+        autocomplete="off"
+        spellcheck="false"
+        aria-roledescription={roleDescription}
+      />
+      <button type="button" class="increment" aria-label={`Increase ${label}`} tabindex="-1">
+        <Icon name="plus" aria-hidden="true" />
+      </button>
+    </div>
+    <span class="text">{label}</span>
+  </label>
 </div>
 
 <style>
   .number-field {
     text-align: center;
-    inline-size: 100%;
     display: grid;
     justify-content: center;
-    gap: 0.5rem;
     scroll-margin-block: 25vh;
+    font-size: clamp(1.65rem, 5vmin, 2rem);
+
+    &:hover {
+      z-index: 1;
+    }
+  }
+
+  label {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    padding-block-end: 0.25rem;
+    margin-block-start: -0.25rem;
+    transition: color 200ms ease-out;
+  }
+
+  .text {
+    display: block;
+    font-size: 0.6em;
+    line-height: 1;
   }
 
   .wrapper {
+    position: relative;
     display: grid;
-    grid-template-columns: 1fr 4ch 1fr;
     border: 1px solid transparent;
     border-radius: calc(infinity * 1px);
   }
@@ -71,55 +91,51 @@ const roleDescription = duration ? "Duration" : "Number field";
     all: unset;
     outline: revert;
     width: 4ch;
+    padding: 0;
     font: inherit;
+    font-size: 1.1em;
     font-variant-numeric: tabular-nums;
     text-align: center;
     background: transparent;
     outline: none;
-    /* caret-color: transparent; */
+    color: inherit;
+    cursor: pointer;
+    caret-color: transparent;
 
     &::selection {
-      /* background-color: oklch(92.9% 0.013 255.508); */
+      background-color: transparent;
     }
-  }
-
-  label {
-    grid-row: 2;
-    grid-column: 1 / -1;
   }
 
   button {
     all: unset;
+    display: flex;
     outline: revert;
-    padding: 0.75rem 1rem;
+    position: absolute;
+    top: 50%;
+    translate: 0 -50%;
+    padding: 0.25rem 0.5rem;
     opacity: 0;
+    font-size: 0.9em;
+    scale: 0.9;
     touch-action: manipulation;
+    transition: 150ms ease-out;
+    transition-property: opacity, scale;
+
+    :global(svg) {
+      flex-shrink: 0;
+    }
 
     &:not(:disabled) {
       cursor: pointer;
     }
   }
 
-  .wrapper:not([data-disabled]):focus-within {
-    border-color: currentColor;
-
-    button {
-      opacity: 1;
-    }
+  .decrement {
+    right: 100%;
   }
 
-  [data-disabled] {
-    opacity: 0.5;
-  }
-
-  @media (hover: hover) {
-    .number-field:not([data-disabled]) {
-      .wrapper:hover {
-        border-color: currentColor;
-      }
-      .wrapper:hover button {
-        opacity: 1;
-      }
-    }
+  .increment {
+    left: 100%;
   }
 </style>

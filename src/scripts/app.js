@@ -30,16 +30,17 @@ function main() {
     });
 
   /**
-   * @param {boolean} running
+   * @param {boolean} disabled
    */
-  const setFieldsDisabled = (running) => {
+  const setFieldsDisabled = (disabled) => {
     for (const field of fields) {
-      field.setDisabled(running);
+      field.setDisabled(disabled);
     }
   };
 
   const player = enhancePlayer($player, {
     getConfig: readConfig,
+    attrsRoot: $appRoot,
     onRunningChange: setFieldsDisabled,
   });
 
@@ -48,12 +49,8 @@ function main() {
   $appRoot.addEventListener("number-field-change", () => {
     const config = readConfig();
     saveConfig(config);
-
-    // Edits while paused (or idle) soft-reset so the next Play starts prepare
-    // with the updated values. While running, fields are disabled.
-    if (!player.isRunning()) {
-      player.softReset(config);
-    }
+    // Fields are only editable while idle; soft-reset so Play uses the new values.
+    player.softReset(config);
   });
 }
 

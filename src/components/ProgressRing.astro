@@ -1,0 +1,121 @@
+---
+import Ring from "./Ring.astro";
+
+export interface Props {
+  work: number;
+  rest: number;
+  class?: string;
+}
+
+const { work, rest, class: className, ...restProps } = Astro.props;
+
+const total = work + rest;
+const workPercent = total > 0 ? (work / total) * 100 : 0;
+const restPercent = total > 0 ? (rest / total) * 100 : 0;
+---
+
+<Ring
+  class:list={["progress-ring", className]}
+  style={`
+    --progress-work-percent: ${workPercent};
+    --progress-rest-percent: ${restPercent};
+  `}
+  {...restProps}
+>
+  <g data-phase="work" style="--progress-work: 100;">
+    <circle class="progress-track" cx="50" cy="50" r="45" pathLength="100"></circle>
+    <circle class="progress-fill" cx="50" cy="50" r="45" pathLength="100"></circle>
+  </g>
+  <g data-phase="rest" style="--progress-rest: 100;">
+    <circle class="progress-track" cx="50" cy="50" r="45" pathLength="100"></circle>
+    <circle class="progress-fill" cx="50" cy="50" r="45" pathLength="100"></circle>
+  </g>
+  <div class="progress-dot" slot="center"></div>
+</Ring>
+
+<style>
+  [data-phase] {
+    --duration: 0.4s;
+    transform-origin: center;
+    transform-box: view-box;
+    transition:
+      --progress-work var(--duration) linear,
+      --progress-rest var(--duration) linear;
+  }
+
+  circle {
+    stroke: currentcolor;
+    stroke-dasharray: var(--arc-length) 100;
+    /* Hide round linecap when dash length is 0 */
+    opacity: min(1, var(--arc-length));
+  }
+
+  .progress-track {
+    color: var(--color-fg-subtle);
+    stroke-dashoffset: 0;
+  }
+
+  .progress-fill {
+    stroke: var(--progress-fill-stroke);
+    stroke-dashoffset: calc(var(--arc-length) * (1 - var(--phase-progress) / 100));
+    opacity: min(1, var(--phase-progress), var(--arc-length));
+  }
+
+  [data-phase="work"] {
+    --arc-length: max(0, calc(var(--progress-work-percent) - var(--ring-gap)));
+    --phase-progress: var(--progress-work);
+    --progress-fill-stroke: var(--color-work);
+    transform: rotate(calc(var(--ring-gap) * 2deg));
+  }
+
+  [data-phase="rest"] {
+    --arc-length: max(0, calc(var(--progress-rest-percent) - var(--ring-gap)));
+    --phase-progress: var(--progress-rest);
+    --progress-fill-stroke: var(--color-rest);
+    transform: rotate(calc(var(--ring-gap) * 2deg + var(--progress-work-percent) * 3.6deg));
+  }
+
+  :global([data-status="complete"]) [data-phase] {
+    --progress-fill-stroke: var(--color-digit, var(--color-fg));
+  }
+
+  .progress-dot {
+    --size: 2.5vmin;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background-color: var(--color-fg);
+  }
+
+  :global([data-phase="work"]) .progress-dot {
+    animation: dot-work 0.5s steps(1) infinite;
+  }
+
+  :global([data-phase="rest"]) .progress-dot {
+    animation: dot-rest 1s steps(3) infinite alternate;
+  }
+
+  @keyframes dot-work {
+    from {
+      translate: -50% 0;
+    }
+    33% {
+      translate: 0 -50%;
+    }
+    66% {
+      translate: 50% 0;
+    }
+    to {
+      translate: 0 0;
+    }
+  }
+
+  @keyframes dot-rest {
+    from {
+      scale: 1;
+    }
+    to {
+      scale: 1.6;
+    }
+  }
+</style>

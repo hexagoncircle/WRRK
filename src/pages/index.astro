@@ -32,7 +32,7 @@ import {
     <link rel="stylesheet" href="https://use.typekit.net/yys8fwy.css" />
   </head>
   <body>
-    <main class="screen" data-app-root>
+    <main class="screen" data-app-root data-status="idle">
       <h1 class="sr-only">Interval Timer</h1>
       <fieldset class="controls">
         <legend class="sr-only">Controls</legend>
@@ -84,30 +84,62 @@ import {
   .screen {
     display: flex;
     flex-direction: column-reverse;
-    gap: 2rem;
-    width: 100%;
+    column-gap: 15vmin;
+    width: fit-content;
     min-height: 100%;
+    margin-inline: auto;
   }
 
   .controls {
-    align-self: center;
     border: none;
-    row-gap: 2rem;
     padding: 0;
     margin: 0;
+    margin-block-start: auto;
     flex: 0 1 auto;
     display: flex;
-    justify-content: center;
-    align-items: center;
+    row-gap: 4vmin;
+    padding-block: 5vmin;
+    justify-content: space-between;
+    transition: 0.3s ease-out;
+    transition-property: opacity, scale;
   }
 
-  @media (height < 30rem) {
+  .screen:not([data-status="idle"]) > .controls {
+    color: var(--color-fg-muted);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .controls:not(:hover) :global(.number-field:not([data-disabled])):focus-within {
+    button {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  .controls :global(.number-field:not([data-disabled])) {
+    label:hover button {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  .controls:not(:hover):focus-within :global(.number-field:not(:focus-within)) {
+    color: var(--color-fg-muted);
+  }
+
+  @media (min-aspect-ratio: 1000/600) {
     .screen {
       flex-direction: row;
+      min-height: unset;
+      height: fit-content;
+      margin-block: auto;
     }
 
     .controls {
       flex-direction: column;
+      padding-block: unset;
+      margin-block-start: unset;
     }
   }
 </style>

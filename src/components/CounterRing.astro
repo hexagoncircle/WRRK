@@ -1,0 +1,47 @@
+---
+import Ring from "./Ring.astro";
+
+const { count, class: className, ...rest } = Astro.props;
+---
+
+<Ring class:list={["counter-ring", className]} style={`--count: ${count}`} {...rest}>
+  <circle class="counter-track" cx="50" cy="50" r="45" pathLength="100"></circle>
+  <circle class="counter-fill" cx="50" cy="50" r="45" pathLength="100"></circle>
+  <div class="counter-text" slot="center">
+    <span class="current">1</span>
+    <span>/</span>
+    <span class="total">{count}</span>
+  </div>
+</Ring>
+
+<style>
+  .counter-track,
+  .counter-fill {
+    stroke-dashoffset: calc(var(--ring-gap) / -2);
+  }
+
+  .counter-track {
+    stroke: var(--color-fg-subtle);
+    stroke-dasharray: calc(100 / var(--count) - var(--ring-gap)) var(--ring-gap);
+  }
+
+  .counter-fill {
+    stroke: var(--color-digit, var(--color-fg));
+    stroke-dasharray: var(
+      --fill-dasharray,
+      calc(100 / var(--count) - var(--ring-gap)) var(--ring-gap)
+    );
+  }
+
+  .counter-text {
+    display: flex;
+    font-family: var(--font-display);
+    font-size: 4vmin;
+    line-height: 1;
+
+    span {
+      display: block;
+      inline-size: 1ch;
+    }
+  }
+</style>

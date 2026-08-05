@@ -1,5 +1,5 @@
 ---
-const { digit = 0 } = Astro.props;
+const { digit } = Astro.props;
 ---
 
 <svg
@@ -46,10 +46,10 @@ const { digit = 0 } = Astro.props;
   .digit {
     width: 100%;
     height: auto;
-  }
 
-  .digit :global(path) {
-    fill: var(--color-fg-subtle);
+    path {
+      fill: var(--color-fg-subtle);
+    }
   }
 
   [data-digit="0"] :is(.top, .top-right, .bottom-right, .bottom, .bottom-left, .top-left),
@@ -62,6 +62,6 @@ const { digit = 0 } = Astro.props;
   [data-digit="7"] :is(.top, .top-right, .bottom-right),
   [data-digit="8"] :is(.top, .top-right, .bottom-right, .bottom, .bottom-left, .top-left, .middle),
   [data-digit="9"] :is(.top, .top-right, .bottom-right, .top-left, .middle) {
-    fill: var(--color-fg);
+    fill: var(--color-digit, var(--color-fg));
   }
 </style>
