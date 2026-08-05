@@ -44,8 +44,6 @@ function main() {
     onRunningChange: setFieldsDisabled,
   });
 
-  if (!player) return;
-
   $appRoot.addEventListener("number-field-change", () => {
     const config = readConfig();
     saveConfig(config);

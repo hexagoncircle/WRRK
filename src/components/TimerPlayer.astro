@@ -1,15 +1,15 @@
 ---
 import Digit from "./Digit.astro";
+import CounterRing from "./CounterRing.astro";
 import ProgressRing from "./ProgressRing.astro";
 import { Icon } from "astro-icon/components";
 import { DEFAULT_CONFIG } from "../scripts/model.js";
-import CounterRing from "./CounterRing.astro";
 
 const { class: className, ...rest } = Astro.props;
 ---
 
 <article class:list={["timer-player", className]} data-player {...rest}>
-  <time class="time" datetime="PT0M0S">
+  <time class="time" datetime="PT0M0S" aria-label="0:00">
     <Digit digit={0} />
     <span class="time-separator"></span>
     <Digit digit={0} />
@@ -31,13 +31,13 @@ const { class: className, ...rest } = Astro.props;
         <span class="label sr-only">Start</span>
       </button>
     </div>
-    <div class="phase">
+    <div class="phase" aria-label="Start">
       <div class="phase-track" aria-hidden="true">
         <div class="phase-label">Start</div>
       </div>
     </div>
   </div>
-  <div class="rings">
+  <div class="rings" aria-hidden="true">
     <CounterRing count={DEFAULT_CONFIG.rounds} />
     <ProgressRing work={DEFAULT_CONFIG.workSeconds} rest={DEFAULT_CONFIG.restSeconds} />
   </div>
@@ -51,7 +51,7 @@ const { class: className, ...rest } = Astro.props;
       "status"
       "time"
       "rings";
-    grid-template-rows: 1fr auto;
+    grid-template-rows: auto 1fr auto;
     column-gap: 15vmin;
     row-gap: 5vmin;
     justify-content: center;
@@ -111,12 +111,6 @@ const { class: className, ...rest } = Astro.props;
     gap: 2vmin;
   }
 
-  .round-output {
-    display: flex;
-    gap: 0.1rem;
-    font-variant-numeric: tabular-nums;
-  }
-
   .controls {
     display: flex;
     gap: 1vmin;
@@ -148,6 +142,7 @@ const { class: className, ...rest } = Astro.props;
     height: var(--size);
   }
 
+  /* position: static so ::before can cover the positioned .timer-player */
   .playback {
     position: static;
     cursor: pointer;
@@ -226,7 +221,6 @@ const { class: className, ...rest } = Astro.props;
     }
   }
 
-  /** Toggle playback icon */
   .playback[data-action="play"] :global([data-icon="pause"]),
   .playback[data-action="pause"] :global([data-icon="play"]) {
     display: none;

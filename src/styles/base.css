@@ -31,7 +31,6 @@
 
 :root {
   --color-bg: #1b1b1b;
-  --color-bg-translucent: hsla(0 0% 10.59% / 0.5);
   --color-fg: #ffffff;
   --color-fg-subtle: #323232;
   --color-fg-muted: #757575;
@@ -46,7 +45,6 @@
 
   --ring-gap: 5;
   --ring-stroke: 9;
-  --ring-r: 45;
 }
 
 html {

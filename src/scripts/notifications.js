@@ -7,11 +7,6 @@ export class NotificationController {
     return typeof window !== "undefined" && "Notification" in window;
   }
 
-  get permission() {
-    if (!this.supported) return "denied";
-    return Notification.permission;
-  }
-
   /**
    * Request permission if still undecided. Safe to call from a click handler.
    * @returns {Promise<NotificationPermission | 'unsupported'>}
@@ -76,6 +71,8 @@ export class NotificationController {
       return;
     }
 
-    this.notify("Rest", { body: roundLabel });
+    if (kind === "rest") {
+      this.notify("Rest", { body: roundLabel });
+    }
   }
 }

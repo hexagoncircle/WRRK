@@ -60,7 +60,6 @@ export function createCounterRing(root) {
   }
 
   /**
-   * All segments lit (idle / complete).
    * @param {number} [current=1] 1-based label — pass total on complete so N/N persists
    */
   function showAll(current = 1) {
@@ -71,14 +70,12 @@ export function createCounterRing(root) {
     }
   }
 
-  /** Empty fill instantly (prepare / pre-workout). */
   function clear() {
     paintFill(0);
     if ($current) $current.textContent = "1";
   }
 
   /**
-   * Fill segments through the active round.
    * @param {number} round 1-based current round
    * @param {number} total total rounds
    */

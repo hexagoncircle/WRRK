@@ -89,7 +89,6 @@ const roleDescription = duration ? "Duration" : "Number field";
 
   input {
     all: unset;
-    outline: revert;
     width: 4ch;
     padding: 0;
     font: inherit;
@@ -118,11 +117,10 @@ const roleDescription = duration ? "Duration" : "Number field";
     opacity: 0;
     font-size: 0.9em;
     scale: 0.9;
-    touch-action: manipulation;
     transition: 150ms ease-out;
     transition-property: opacity, scale;
 
-    :global(svg) {
+    :global([data-icon]) {
       flex-shrink: 0;
     }
 
@@ -137,5 +135,11 @@ const roleDescription = duration ? "Duration" : "Number field";
 
   .increment {
     left: 100%;
+  }
+
+  .number-field:not([data-disabled]):focus-within button,
+  .number-field:not([data-disabled]) label:hover button {
+    opacity: 1;
+    scale: 1;
   }
 </style>

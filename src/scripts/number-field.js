@@ -1,4 +1,5 @@
 import { formatMSS } from "./format.js";
+import { clamp } from "./utils.js";
 
 /** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
 function secondsToMss(totalSeconds) {
@@ -21,11 +22,6 @@ function mssToSeconds(mss) {
 function formatMssBuffer(mss) {
   const [minutes, seconds] = splitMss(mss);
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function clamp(value, lo, hi) {
-  if (!Number.isFinite(value)) return lo;
-  return Math.min(hi, Math.max(lo, Math.trunc(value)));
 }
 
 function parseDurationInput(text) {
@@ -68,7 +64,7 @@ const supportsBeforeInput =
 /**
  * @param {HTMLElement} root
  */
-export function enhanceNumberField(root) {
+function enhanceNumberField(root) {
   const $input = root.querySelector(".input");
   const $decrement = root.querySelector(".decrement");
   const $increment = root.querySelector(".increment");
@@ -181,7 +177,7 @@ export function enhanceNumberField(root) {
 
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
-      const delta = event.shiftKey ? 5 : 1;
+      const delta = event.shiftKey ? step * 5 : step;
       stepBy(event.key === "ArrowUp" ? delta : -delta);
       return;
     }

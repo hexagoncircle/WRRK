@@ -1,4 +1,4 @@
-import { createConfig, DEFAULT_CONFIG, normalizeStoredConfig } from "./model.js";
+import { createConfig, normalizeStoredConfig } from "./model.js";
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
 
@@ -10,12 +10,12 @@ const STORAGE_KEY = "interval-timer:config";
 export function loadConfig() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createConfig(DEFAULT_CONFIG);
+    if (!raw) return createConfig();
 
     const parsed = JSON.parse(raw);
-    return normalizeStoredConfig(parsed) ?? createConfig(DEFAULT_CONFIG);
+    return normalizeStoredConfig(parsed) ?? createConfig();
   } catch {
-    return createConfig(DEFAULT_CONFIG);
+    return createConfig();
   }
 }
 
@@ -23,5 +23,9 @@ export function loadConfig() {
  * @param {TimerConfig} config
  */
 export function saveConfig(config) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(createConfig(config)));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(createConfig(config)));
+  } catch {
+    // Best-effort; quota / private mode may reject writes.
+  }
 }

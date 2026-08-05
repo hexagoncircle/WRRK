@@ -1,6 +1,11 @@
 ---
 import Ring from "./Ring.astro";
 
+interface Props {
+  count: number;
+  class?: string;
+}
+
 const { count, class: className, ...rest } = Astro.props;
 ---
 

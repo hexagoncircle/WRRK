@@ -1,3 +1,5 @@
+import { clamp } from "./utils.js";
+
 /**
  * @typedef {'work' | 'rest'} PhaseType
  */
@@ -17,7 +19,6 @@
  * @property {number} totalRounds
  */
 
-// in seconds
 export const DURATION_MIN = 5;
 export const DURATION_MAX = 9 * 60 + 59; // 9:59
 export const DURATION_STEP = 5;
@@ -38,16 +39,6 @@ function toNonNegativeInt(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.trunc(n));
-}
-
-/**
- * @param {number} value
- * @param {number} min
- * @param {number} max
- * @returns {number}
- */
-export function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
 }
 
 /**
@@ -97,14 +88,6 @@ export function toPhases(config) {
   }
 
   return phases;
-}
-
-/**
- * @param {TimerConfig} config
- * @returns {number}
- */
-export function totalDurationSeconds(config) {
-  return toPhases(config).reduce((sum, phase) => sum + phase.durationSeconds, 0);
 }
 
 /**

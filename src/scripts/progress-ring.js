@@ -1,3 +1,5 @@
+import { normalize, phasePercents } from "./utils.js";
+
 /**
  * Dual-phase progress ring driven by CSS custom properties.
  * Geometry percents are set on the ring shell; ticks only update
@@ -12,7 +14,6 @@
  *
  * @param {HTMLElement} root Element with .progress-ring (ring shell)
  */
-import { normalize } from "./utils.js";
 
 /** Must match `--duration` on [data-phase] groups in ProgressRing.astro */
 const TRANSITION_SECONDS = 0.4;
@@ -90,12 +91,7 @@ export function createProgressRing(root) {
    * @param {{ fill?: boolean }} [opts] When fill is true (default), show fills full (idle).
    */
   function setTotals(workSeconds, restSeconds, { fill = true } = {}) {
-    const work = Math.max(0, Number(workSeconds) || 0);
-    const rest = Math.max(0, Number(restSeconds) || 0);
-    const total = work + rest;
-
-    const workPercent = total > 0 ? (work / total) * 100 : 0;
-    const restPercent = total > 0 ? (rest / total) * 100 : 0;
+    const { workPercent, restPercent } = phasePercents(workSeconds, restSeconds);
 
     root.style.setProperty("--progress-work-percent", String(workPercent));
     root.style.setProperty("--progress-rest-percent", String(restPercent));
@@ -151,10 +147,10 @@ export function createProgressRing(root) {
       ledRest = led;
     }
 
+    // Snap when settling or regressing; otherwise aim ahead of real time.
     const workInstant = settle || ledWork < prevWorkProgress - 0.001;
     const restInstant = settle || ledRest < prevRestProgress - 0.001;
 
-    // On reset/phase change, snap to true progress (usually 0); otherwise aim ahead.
     setPhaseProgress($workGroup, "--progress-work", workInstant ? actualWork : ledWork, {
       instant: workInstant,
       durationSeconds: transitionSec,

@@ -19,10 +19,6 @@ export class WakeLockController {
     });
   }
 
-  get supported() {
-    return "wakeLock" in navigator;
-  }
-
   async request() {
     this._enabled = true;
     await this._acquire();
@@ -39,7 +35,7 @@ export class WakeLockController {
   }
 
   async _acquire() {
-    if (!this._enabled || !this.supported) return;
+    if (!this._enabled || !("wakeLock" in navigator)) return;
     if (document.visibilityState !== "visible") return;
     if (this._sentinel && !this._sentinel.released) return;
 

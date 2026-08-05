@@ -1,9 +1,4 @@
-/**
- * Ticker running off the main thread. Worker timers keep firing at a steady
- * cadence even when the tab is hidden, unlike main-thread rAF/setTimeout which
- * browsers heavily throttle for background tabs. Each `tick` message just asks
- * the engine to recompute against its absolute deadline, so accuracy stays put.
- */
+/** Posts `{ type: "tick" }` on an interval for TimerEngine. */
 
 /** @type {ReturnType<typeof setInterval> | null} */
 let intervalId = null;

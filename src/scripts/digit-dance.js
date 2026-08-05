@@ -91,20 +91,12 @@ function settleOrder(digitValue) {
 
 /**
  * @param {number | null | undefined} budgetSeconds
- * @param {number} settleCount
+ * @param {number} [settleCount=0]
  */
-function danceTimings(budgetSeconds, settleCount) {
+function danceTimings(budgetSeconds, settleCount = 0) {
   const steps = ITERATIONS * FIGURE8.length;
   const factor = (steps - 1) / 2 + 1 + settleCount / 2;
   const duration = budgetSeconds != null ? budgetSeconds / factor : DEFAULT_DURATION;
-  return { duration, step: duration * 0.5, steps };
-}
-
-/** Scale a figure-8 chase to fill `budgetSeconds`. */
-function figure8Timings(budgetSeconds) {
-  const steps = ITERATIONS * FIGURE8.length;
-  const factor = (steps - 1) / 2 + 1;
-  const duration = budgetSeconds / factor;
   return { duration, step: duration * 0.5, steps };
 }
 
@@ -164,23 +156,18 @@ function buildSettleSequence(digit, { fg, subtle, step, at, digitValue }) {
  *   budgetSeconds?: number | null,
  *   at?: number,
  *   digitValue?: string,
- *   clear?: boolean,
  * }} options
  * @returns {{ sequence: any[], end: number }}
  */
 function buildDigitDanceSequence(
   digit,
-  { fg, subtle, budgetSeconds = null, at = 0, digitValue, clear = true },
+  { fg, subtle, budgetSeconds = null, at = 0, digitValue },
 ) {
   const value = digitValue ?? digit.dataset.digit ?? "0";
   const settle = settleOrder(value);
   const { duration, step, steps } = danceTimings(budgetSeconds, settle.length);
-  /** @type {any[]} */
-  const sequence = [];
 
   const chased = buildFigure8Sequence(digit, { fg, subtle, duration, step, steps, at });
-  sequence.push(...chased.sequence);
-
   const settled = buildSettleSequence(digit, {
     fg,
     subtle,
@@ -188,25 +175,11 @@ function buildDigitDanceSequence(
     at: chased.end,
     digitValue: value,
   });
-  sequence.push(...settled.sequence);
 
-  const end = settled.end;
-
-  if (clear) {
-    sequence.push([
-      toggle(
-        () => setFills([digit], null),
-        () => setFills([digit], subtle),
-      ),
-      { duration: 0, at: end },
-    ]);
-  }
-
-  return { sequence, end };
-}
-
-function prefersReducedMotion() {
-  return matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return {
+    sequence: [...chased.sequence, ...settled.sequence],
+    end: settled.end,
+  };
 }
 
 function trackControls(controls, digits) {
@@ -241,8 +214,6 @@ export function cancelDigitDance() {
  * @param {{ budgetSeconds?: number | null }} [options]
  */
 export function playDigitDance(digits, { budgetSeconds = null } = {}) {
-  if (prefersReducedMotion()) return null;
-
   const list = [...digits];
   if (list.length === 0) return null;
 
@@ -261,7 +232,6 @@ export function playDigitDance(digits, { budgetSeconds = null } = {}) {
       subtle,
       budgetSeconds,
       at: 0,
-      clear: false,
     });
     sequence.push(...segments);
     if (end > maxEnd) maxEnd = end;
@@ -275,6 +245,7 @@ export function playDigitDance(digits, { budgetSeconds = null } = {}) {
     { duration: 0, at: maxEnd },
   ]);
 
+  // Anchor timeline length so Motion keeps the full sequence in range.
   sequence.push([() => {}, { duration: maxEnd, at: 0, ease: "linear" }]);
 
   return trackControls(animate(sequence), list);
@@ -302,17 +273,9 @@ export function playPrepareCountdown(digits, { count = 3, beatSeconds = 1, onBea
   ones.dataset.digit = String(count);
 
   const { fg, subtle } = themeColors(list[0]);
-
-  if (prefersReducedMotion()) {
-    setFills(dancers, subtle);
-    setFills([ones], null);
-    onBeat?.(count);
-    return null;
-  }
-
   setFills(list, subtle);
 
-  const chase = figure8Timings(beatSeconds);
+  const chase = danceTimings(beatSeconds);
   /** @type {any[]} */
   const sequence = [];
   const total = count * beatSeconds;

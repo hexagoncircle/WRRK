@@ -1,8 +1,9 @@
 import { animate, steps } from "motion";
+import { LABEL } from "./labels.js";
 
 const DURATION = 0.2;
 const LINE = "1lh";
-const SLIDE_DOWN = new Set(["Get ready", "Paused"]);
+const SLIDE_DOWN = new Set([LABEL.prepare, LABEL.paused]);
 
 /**
  * @param {string | null | undefined} tone
@@ -10,10 +11,6 @@ const SLIDE_DOWN = new Set(["Get ready", "Paused"]);
  */
 function normalizeTone(tone) {
   return tone === "work" || tone === "rest" ? tone : null;
-}
-
-function prefersReducedMotion() {
-  return matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**
@@ -92,7 +89,7 @@ export function createPhaseLabel(root) {
    * @param {"bottom" | "top"} [from]
    */
   const slide = (next, nextTone, from = "bottom") => {
-    if (!label || prefersReducedMotion()) {
+    if (!label) {
       snap(next, nextTone);
       return;
     }
@@ -148,13 +145,13 @@ export function createPhaseLabel(root) {
     if (next === text && resolvedTone === tone && !active) return;
 
     // Complete appears instantly (CSS pulses via [data-status="complete"]).
-    if (next === "Complete") {
+    if (next === LABEL.complete) {
       snap(next, resolvedTone);
       return;
     }
 
     // Complete → Start returns without a slide.
-    if (text === "Complete" && next === "Start") {
+    if (text === LABEL.complete && next === LABEL.start) {
       snap(next, resolvedTone);
       return;
     }

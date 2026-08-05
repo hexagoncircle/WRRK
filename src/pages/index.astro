@@ -34,8 +34,8 @@ import {
   <body>
     <main class="screen" data-app-root data-status="idle">
       <h1 class="sr-only">Interval Timer</h1>
-      <fieldset class="controls">
-        <legend class="sr-only">Controls</legend>
+      <fieldset class="setup">
+        <legend class="sr-only">Setup</legend>
         <NumberField
           label="work"
           name="workSeconds"
@@ -63,7 +63,7 @@ import {
           step={1}
         />
       </fieldset>
-      <TimerPlayer class="player" />
+      <TimerPlayer />
     </main>
     <script>
       import "../scripts/app.js";
@@ -90,7 +90,7 @@ import {
     margin-inline: auto;
   }
 
-  .controls {
+  .setup {
     border: none;
     padding: 0;
     margin: 0;
@@ -100,31 +100,16 @@ import {
     row-gap: 4vmin;
     padding-block: 5vmin;
     justify-content: space-between;
-    transition: 0.3s ease-out;
-    transition-property: opacity, scale;
+    transition: color 0.3s ease-out;
   }
 
-  .screen:not([data-status="idle"]) > .controls {
+  .screen:not([data-status="idle"]) > .setup {
     color: var(--color-fg-muted);
     pointer-events: none;
     user-select: none;
   }
 
-  .controls:not(:hover) :global(.number-field:not([data-disabled])):focus-within {
-    button {
-      opacity: 1;
-      scale: 1;
-    }
-  }
-
-  .controls :global(.number-field:not([data-disabled])) {
-    label:hover button {
-      opacity: 1;
-      scale: 1;
-    }
-  }
-
-  .controls:not(:hover):focus-within :global(.number-field:not(:focus-within)) {
+  .setup:not(:hover):focus-within :global(.number-field:not(:focus-within)) {
     color: var(--color-fg-muted);
   }
 
@@ -136,7 +121,7 @@ import {
       margin-block: auto;
     }
 
-    .controls {
+    .setup {
       flex-direction: column;
       padding-block: unset;
       margin-block-start: unset;

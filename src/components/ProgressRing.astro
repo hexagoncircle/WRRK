@@ -1,5 +1,6 @@
 ---
 import Ring from "./Ring.astro";
+import { phasePercents } from "../scripts/utils.js";
 
 export interface Props {
   work: number;
@@ -7,11 +8,8 @@ export interface Props {
   class?: string;
 }
 
-const { work, rest, class: className, ...restProps } = Astro.props;
-
-const total = work + rest;
-const workPercent = total > 0 ? (work / total) * 100 : 0;
-const restPercent = total > 0 ? (rest / total) * 100 : 0;
+const { work, rest, class: className, ...attrs } = Astro.props;
+const { workPercent, restPercent } = phasePercents(work, rest);
 ---
 
 <Ring
@@ -20,7 +18,7 @@ const restPercent = total > 0 ? (rest / total) * 100 : 0;
     --progress-work-percent: ${workPercent};
     --progress-rest-percent: ${restPercent};
   `}
-  {...restProps}
+  {...attrs}
 >
   <g data-phase="work" style="--progress-work: 100;">
     <circle class="progress-track" cx="50" cy="50" r="45" pathLength="100"></circle>
@@ -87,6 +85,7 @@ const restPercent = total > 0 ? (rest / total) * 100 : 0;
     background-color: var(--color-fg);
   }
 
+  /* [data-phase] for the blinking dot lives on the app root, not these <g>s. */
   :global([data-phase="work"]) .progress-dot {
     animation: dot-work 0.5s steps(1) infinite;
   }

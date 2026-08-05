@@ -17,6 +17,7 @@ export const STATUS = {
 /**
  * Drift-free interval engine.
  * Deadlines use absolute Temporal instants so hidden-tab throttling can catch up.
+ * Ticks are driven by timer-worker.js (steady cadence while the tab is hidden).
  */
 export class TimerEngine extends EventTarget {
   /**
@@ -39,7 +40,6 @@ export class TimerEngine extends EventTarget {
     this._pausedFrom = null;
     /** @type {Worker | null} */
     this._worker = null;
-    this._tick = this._tick.bind(this);
   }
 
   /** @returns {Phase | null} */
@@ -52,10 +52,10 @@ export class TimerEngine extends EventTarget {
     if (this.status === STATUS.running || this.status === STATUS.preparing) return;
     if (this.status === STATUS.complete) return;
 
-    if (this.status === STATUS.paused && this.remaining) {
+    if (this.status === STATUS.paused) {
       this.status = this._pausedFrom ?? STATUS.running;
       this._pausedFrom = null;
-      this._scheduleEnd(this.remaining);
+      this._scheduleEnd(this.remaining ?? Temporal.Duration.from({ seconds: 0 }));
       this.remaining = null;
       this.dispatchEvent(new CustomEvent("resume", { detail: this._phaseDetail() }));
     } else {
@@ -72,7 +72,9 @@ export class TimerEngine extends EventTarget {
     if (this.status !== STATUS.running && this.status !== STATUS.preparing) return;
     if (!this.phaseEndInstant) return;
 
-    this.remaining = Temporal.Now.instant().until(this.phaseEndInstant);
+    const left = Temporal.Now.instant().until(this.phaseEndInstant);
+    this.remaining =
+      left.total("seconds") < 0 ? Temporal.Duration.from({ seconds: 0 }) : left;
     this._pausedFrom = this.status;
     this.status = STATUS.paused;
     this._stopTicking();
@@ -130,8 +132,6 @@ export class TimerEngine extends EventTarget {
     return {
       status: this.status,
       phase,
-      index: preparing ? -1 : this.phaseIndex,
-      total: this.phases.length,
       round: phase?.round ?? null,
       totalRounds: this.config.rounds,
     };
@@ -141,10 +141,6 @@ export class TimerEngine extends EventTarget {
     this.dispatchEvent(new CustomEvent("phase-change", { detail: this._phaseDetail() }));
   }
 
-  /**
-   * Recompute against the absolute deadline and emit a tick. Driven by the
-   * worker's steady interval; the `event` argument (a MessageEvent) is unused.
-   */
   _tick() {
     if (this.status !== STATUS.running && this.status !== STATUS.preparing) return;
     if (!this.phaseEndInstant) return;
@@ -172,32 +168,26 @@ export class TimerEngine extends EventTarget {
     if (this.status !== STATUS.running && this.status !== STATUS.preparing) return;
     if (!this.phaseEndInstant) return;
 
-    const secondsLeft = now.until(this.phaseEndInstant).total("seconds");
-    const phase = this.currentPhase;
-
     this.dispatchEvent(
       new CustomEvent("tick", {
         detail: {
-          remainingSeconds: secondsLeft,
+          remainingSeconds: now.until(this.phaseEndInstant).total("seconds"),
           status: this.status,
-          phase,
-          round: phase?.round ?? null,
-          totalRounds: this.config.rounds,
+          phase: this.currentPhase,
         },
       }),
     );
   }
 
-  /**
-   * Drive ticks from a Web Worker. Worker timers keep firing at a steady
-   * cadence even when the tab is hidden, unlike main-thread rAF/setTimeout
-   * which browsers heavily throttle for background tabs. Accuracy is unaffected
-   * either way because deadlines are absolute Temporal instants.
-   */
+  _onWorkerMessage = (event) => {
+    if (event.data?.type !== "tick") return;
+    this._tick();
+  };
+
   _startTicking() {
     if (!this._worker) {
       this._worker = new Worker(new URL("./timer-worker.js", import.meta.url), { type: "module" });
-      this._worker.addEventListener("message", this._tick);
+      this._worker.addEventListener("message", this._onWorkerMessage);
     }
     this._worker.postMessage({ type: "start", interval: 250 });
     // Render an immediate frame instead of waiting for the first message.
