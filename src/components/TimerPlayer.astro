@@ -21,11 +21,11 @@ const { class: className, ...rest } = Astro.props;
       <output class="round-current">––</output>
     </div>
     <div class="controls">
-      <button type="button" class="reset">
+      <button type="button" class="btn reset">
         <Icon name="reset" aria-hidden="true" />
         <span class="label sr-only">Reset</span>
       </button>
-      <button type="button" class="playback" data-action="play">
+      <button type="button" class="btn playback" data-action="play">
         <Icon name="pause" aria-hidden="true" />
         <Icon name="play" aria-hidden="true" />
         <span class="label sr-only">Start</span>
@@ -52,10 +52,9 @@ const { class: className, ...rest } = Astro.props;
       "time"
       "rings";
     grid-template-rows: auto 1fr auto;
-    column-gap: 15vmin;
-    row-gap: 5vmin;
+    column-gap: 3em;
+    row-gap: 1em;
     justify-content: center;
-    font-size: 7vmin;
     min-width: 0;
     margin: auto;
     isolation: isolate;
@@ -65,19 +64,20 @@ const { class: className, ...rest } = Astro.props;
   .status {
     grid-area: status;
     display: flex;
-    gap: 2vmin;
+    gap: 0.5em;
     align-items: center;
     inline-size: 100%;
+    font-size: 1.4em;
     font-family: var(--font-display);
   }
 
   .time {
     grid-area: time;
     display: flex;
-    gap: 5vmin;
+    gap: 1em;
     font-variant-numeric: tabular-nums;
     color: #ffffff;
-    inline-size: 75vmin;
+    inline-size: 15em;
     transition: opacity 300ms ease-out;
   }
 
@@ -85,6 +85,7 @@ const { class: className, ...rest } = Astro.props;
     grid-area: rings;
     display: flex;
     justify-content: space-between;
+    margin-inline: calc(var(--ring-gap) * -1px);
   }
 
   .time-separator {
@@ -117,23 +118,6 @@ const { class: className, ...rest } = Astro.props;
     align-items: start;
     font-size: 0.8em;
     margin-inline-start: auto;
-  }
-
-  .controls :where(button) {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: inherit;
-    font: inherit;
-    padding: 1vmin;
-    border-radius: 50%;
-    outline-offset: 6px;
-    transition: outline-offset 200ms ease-out;
-
-    &:focus-visible {
-      outline: 4px solid var(--color-ring);
-      outline-offset: 1px;
-    }
   }
 
   .controls [data-icon] {
@@ -261,7 +245,7 @@ const { class: className, ...rest } = Astro.props;
     color: var(--color-rest);
   }
 
-  @media (min-aspect-ratio: 1000/600) {
+  @media (min-aspect-ratio: 900/600) {
     .timer-player {
       grid-template-areas:
         "time rings"

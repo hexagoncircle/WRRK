@@ -8,6 +8,15 @@ import { NotificationController } from "./notifications.js";
 import { createCounterRing } from "./counter-ring.js";
 import { createPhaseLabel } from "./phase-label.js";
 import { createProgressRing } from "./progress-ring.js";
+import {
+  playBlip,
+  playRestSound,
+  playPauseSound,
+  playResumeSound,
+  playWorkSound,
+  playCompletedSound,
+  unlock as unlockAudio,
+} from "./sounds.js";
 import { WakeLockController } from "./wake-lock.js";
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
@@ -108,7 +117,17 @@ export function enhancePlayer(root, options) {
   const notifications = new NotificationController();
   /** @type {string | null} */
   let lastNotifiedKey = null;
+  /** @type {number | null} */
+  let lastBlippedSecond = null;
   const defaultTitle = document.title;
+
+  /** @param {number} sec */
+  const blipCountdown = (sec) => {
+    if (sec < 1 || sec > 3) return;
+    // 3 → right, 2 → left, 1 → right
+    const pan = sec % 2 === 0 ? -0.75 : 0.75;
+    playBlip({ pan });
+  };
 
   const syncRingTotals = () => {
     progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);
@@ -208,7 +227,10 @@ export function enhancePlayer(root, options) {
     prepareTimeline = playPrepareCountdown($digits, {
       count: READY_COUNT,
       beatSeconds: 1,
-      onBeat: setPrepareLabel,
+      onBeat: (n) => {
+        setPrepareLabel(n);
+        blipCountdown(n);
+      },
     });
   };
 
@@ -249,6 +271,7 @@ export function enhancePlayer(root, options) {
     engine?.reset();
     engine = new TimerEngine(config);
     lastNotifiedKey = null;
+    lastBlippedSecond = null;
     bindEngine(engine);
     setIdleDisplay();
     if (lightUp) lightUpDigits();
@@ -260,6 +283,19 @@ export function enhancePlayer(root, options) {
   const bindEngine = (nextEngine) => {
     nextEngine.addEventListener("phase-change", (event) => {
       const detail = /** @type {CustomEvent<PhaseDetail>} */ (event).detail;
+      // Schedule audio before DOM/Motion work so render jank can't delay the attack.
+      if (
+        detail.status === STATUS.running &&
+        detail.phase &&
+        (detail.phase.type === "work" || detail.phase.type === "rest")
+      ) {
+        if (detail.phase.type === "rest") {
+          playRestSound();
+        } else {
+          playWorkSound();
+        }
+      }
+      lastBlippedSecond = null;
       renderPhase(detail, {
         startPrepare: detail.status === STATUS.preparing,
       });
@@ -277,7 +313,22 @@ export function enhancePlayer(root, options) {
       if (detail.status !== STATUS.preparing) {
         setTime(detail.remainingSeconds);
         syncRingProgress(detail.phase, detail.remainingSeconds);
+
+        const phase = detail.phase;
+
+        if (
+          detail.status === STATUS.running &&
+          phase &&
+          (phase.type === "work" || phase.type === "rest")
+        ) {
+          const sec = Math.ceil(detail.remainingSeconds);
+          if (sec !== lastBlippedSecond && sec >= 1 && sec <= 3) {
+            lastBlippedSecond = sec;
+            blipCountdown(sec);
+          }
+        }
       }
+
       refreshTitle();
     });
 
@@ -290,6 +341,7 @@ export function enhancePlayer(root, options) {
         syncPrepareTimeline();
         prepareTimeline?.play();
       }
+      playResumeSound();
       emitRunningChange();
     });
 
@@ -297,6 +349,7 @@ export function enhancePlayer(root, options) {
       prepareTimeline?.pause();
       setPlaybackLabel(LABEL.resume);
       phaseLabel.set(LABEL.paused);
+      playPauseSound();
       // Snap off the led-ahead target so the ring does not keep easing after freeze.
       if (nextEngine.currentPhase && nextEngine.remaining) {
         syncRingProgress(nextEngine.currentPhase, nextEngine.remaining.total("seconds"), {
@@ -313,6 +366,7 @@ export function enhancePlayer(root, options) {
       stopPrepareTimeline();
       setTime(0);
       phaseLabel.set(LABEL.complete);
+      playCompletedSound();
       setRound(0);
       setPlaybackLabel(LABEL.start);
       $playback.disabled = true;
@@ -335,6 +389,7 @@ export function enhancePlayer(root, options) {
 
     nextEngine.addEventListener("reset", () => {
       lastNotifiedKey = null;
+      lastBlippedSecond = null;
       lastPhaseType = null;
       refreshTitle();
     });
@@ -394,7 +449,10 @@ export function enhancePlayer(root, options) {
   const startPlayback = async () => {
     if (!engine || isActive()) return;
 
+    // Kick off resume in the click gesture, then wait so prepare isn't racing a cold context.
+    const audioReady = unlockAudio();
     await notifications.ensurePermission();
+    await audioReady;
     engine.start();
   };
 

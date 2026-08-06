@@ -9,3 +9,20 @@
   white-space: nowrap;
   border-width: 0;
 }
+
+.btn {
+  all: unset;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 1vmin;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  outline-offset: var(--focus-ring-offset-start);
+  transition: var(--focus-ring-transition);
+
+  &:focus-visible {
+    outline: var(--focus-ring-outline);
+    outline-offset: var(--focus-ring-offset);
+  }
+}

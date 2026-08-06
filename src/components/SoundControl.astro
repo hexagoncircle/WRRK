@@ -1,0 +1,41 @@
+---
+import { Icon } from "astro-icon/components";
+
+const { class: className, ...rest } = Astro.props;
+---
+
+<button
+  id="sound-control"
+  aria-pressed="false"
+  class:list={["btn sound-control", className]}
+  {...rest}
+>
+  <span class="sr-only">Toggle sound</span>
+  <Icon name="sound" />
+  <Icon name="sound-off" />
+</button>
+
+<script>
+  import { playClickSound } from "../scripts/sounds.js";
+
+  const $sound = document.getElementById("sound-control");
+
+  $sound?.addEventListener("click", () => {
+    playClickSound();
+    const currentState = $sound.getAttribute("aria-pressed");
+    $sound.setAttribute("aria-pressed", String(currentState === "false"));
+  });
+</script>
+
+<style>
+  [data-icon] {
+    --size: 0.8em;
+    width: var(--size);
+    height: var(--size);
+  }
+
+  [aria-pressed="true"] [data-icon="sound"],
+  [aria-pressed="false"] [data-icon="sound-off"] {
+    display: none;
+  }
+</style>

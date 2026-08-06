@@ -1,3 +1,5 @@
+import { readRingGap } from "./utils.js";
+
 /**
  * Segmented rounds counter ring driven by CSS custom properties.
  *
@@ -10,15 +12,11 @@ export function createCounterRing(root) {
 
   let count = Math.max(1, Number(root.style.getPropertyValue("--count")) || 1);
 
-  function readGap() {
-    return Number.parseFloat(getComputedStyle(root).getPropertyValue("--ring-gap")) || 5;
-  }
-
   /**
    * @param {number} n
    */
   function geometry(n) {
-    const gap = readGap();
+    const gap = readRingGap(root);
     const segment = 100 / n;
     const dash = Math.max(segment - gap, 0);
     return { gap, segment, dash };

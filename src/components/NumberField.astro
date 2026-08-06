@@ -59,7 +59,7 @@ const roleDescription = duration ? "Duration" : "Number field";
     display: grid;
     justify-content: center;
     scroll-margin-block: 25vh;
-    font-size: clamp(1.65rem, 5vmin, 2rem);
+    font-size: clamp(1.5rem, 5vmin, 2em);
 
     &:hover {
       z-index: 1;
@@ -69,8 +69,8 @@ const roleDescription = duration ? "Duration" : "Number field";
   label {
     grid-row: 2;
     grid-column: 1 / -1;
-    padding-block-end: 0.25rem;
-    margin-block-start: -0.25rem;
+    padding-block-end: 0.25em;
+    margin-block-start: -0.25em;
     transition: color 200ms ease-out;
   }
 
@@ -121,7 +121,10 @@ const roleDescription = duration ? "Duration" : "Number field";
     transition-property: opacity, scale;
 
     :global([data-icon]) {
-      flex-shrink: 0;
+      flex: none;
+      width: 1em;
+      height: 1em;
+      min-width: 1em;
     }
 
     &:not(:disabled) {
@@ -135,11 +138,5 @@ const roleDescription = duration ? "Duration" : "Number field";
 
   .increment {
     left: 100%;
-  }
-
-  .number-field:not([data-disabled]):focus-within button,
-  .number-field:not([data-disabled]) label:hover button {
-    opacity: 1;
-    scale: 1;
   }
 </style>

@@ -8,6 +8,7 @@
   inherits: true;
   initial-value: 0;
 }
+/* Keep initial-value / --ring-gap in sync with RING_GAP in src/scripts/utils.js */
 @property --ring-gap {
   syntax: "<number>";
   inherits: true;
@@ -43,8 +44,13 @@
     Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   --font-display: "overtime-lcd-pro", var(--font-main);
 
-  --ring-gap: 5;
-  --ring-stroke: 9;
+  --ring-gap: 4;
+  --ring-stroke: 6;
+
+  --focus-ring-outline: 4px solid var(--color-ring);
+  --focus-ring-offset: 1px;
+  --focus-ring-offset-start: 6px;
+  --focus-ring-transition: outline-offset 200ms ease-out;
 }
 
 html {
@@ -56,7 +62,8 @@ body {
   width: 100%;
   min-height: 100%;
   font-family: var(--font-main);
-  padding: 1rem;
+  font-size: 5vmin;
+  padding-block: 5vmin;
   background-color: var(--color-bg);
   color: var(--color-fg);
 }

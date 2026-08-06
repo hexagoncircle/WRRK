@@ -1,4 +1,19 @@
 /**
+ * PathLength units (0–100) for seams between ring segments / phases.
+ * Keep in sync with `--ring-gap` in `src/styles/base.css`.
+ */
+export const RING_GAP = 5;
+
+/**
+ * Read `--ring-gap` from computed styles (falls back to {@link RING_GAP}).
+ * @param {Element} el
+ */
+export function readRingGap(el) {
+  const n = Number.parseFloat(getComputedStyle(el).getPropertyValue("--ring-gap"));
+  return Number.isFinite(n) ? n : RING_GAP;
+}
+
+/**
  * @param {number} value
  * @param {number} lo
  * @param {number} hi

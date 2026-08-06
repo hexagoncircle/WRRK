@@ -150,8 +150,11 @@ export function createPhaseLabel(root) {
       return;
     }
 
-    // Complete → Start returns without a slide.
-    if (text === LABEL.complete && next === LABEL.start) {
+    // Returning to Start (from Complete/Paused) appears instantly.
+    if (
+      next === LABEL.start &&
+      (text === LABEL.complete || text === LABEL.paused)
+    ) {
       snap(next, resolvedTone);
       return;
     }

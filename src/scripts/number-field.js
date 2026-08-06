@@ -1,4 +1,5 @@
 import { formatMSS } from "./format.js";
+import { playClickSound } from "./sounds.js";
 import { clamp } from "./utils.js";
 
 /** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
@@ -146,6 +147,7 @@ function enhanceNumberField(root) {
   const stepBy = (delta) => {
     if (isDisabled()) return;
     setValue(readDraft() + delta);
+    playClickSound();
     if (inputFocused()) armReplace();
   };
 

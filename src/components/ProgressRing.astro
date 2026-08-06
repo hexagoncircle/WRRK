@@ -78,7 +78,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
   }
 
   .progress-dot {
-    --size: 2.5vmin;
+    --size: 0.6em;
     width: var(--size);
     height: var(--size);
     border-radius: 50%;
@@ -92,6 +92,10 @@ const { workPercent, restPercent } = phasePercents(work, rest);
 
   :global([data-phase="rest"]) .progress-dot {
     animation: dot-rest 1s steps(3) infinite alternate;
+  }
+
+  :global([data-status="paused"]) .progress-dot {
+    animation: none;
   }
 
   @keyframes dot-work {
