@@ -30,7 +30,7 @@ const CLEANUP_MARGIN = 0.05;
 const LOOKAHEAD = 0.02;
 const INAUDIBLE_GAIN = 0.001;
 const ENVELOPE_FLOOR = 0.0001;
-const OUTPUT_GAIN = 4;
+const OUTPUT_GAIN = 20;
 
 const NOTE_OFFSETS = {
   C: 0,
@@ -451,10 +451,7 @@ function applyEnvelope(audio, source, destination, layer, startTime) {
   const gain = audio.createGain();
   gain.gain.setValueAtTime(ENVELOPE_FLOOR, startTime);
   gain.gain.exponentialRampToValueAtTime(layer.peak, startTime + layer.attack);
-  gain.gain.exponentialRampToValueAtTime(
-    ENVELOPE_FLOOR,
-    startTime + layer.attack + layer.decay,
-  );
+  gain.gain.exponentialRampToValueAtTime(ENVELOPE_FLOOR, startTime + layer.attack + layer.decay);
   source.connect(gain).connect(destination);
 }
 
