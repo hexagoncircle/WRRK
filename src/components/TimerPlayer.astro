@@ -1,7 +1,8 @@
 ---
-import Digit from "./Digit.astro";
+import TimeDisplay from "./TimeDisplay.astro";
 import CounterRing from "./CounterRing.astro";
 import ProgressRing from "./ProgressRing.astro";
+import PhaseLabel from "./PhaseLabel.astro";
 import { Icon } from "astro-icon/components";
 import { formatMSS } from "../scripts/format.js";
 import { DEFAULT_CONFIG, totalWorkoutSeconds } from "../scripts/model.js";
@@ -11,12 +12,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
 ---
 
 <article class:list={["timer-player", className]} data-player {...rest}>
-  <time class="time" datetime="PT0M0S" aria-label="0:00">
-    <Digit digit={0} />
-    <span class="time-separator"></span>
-    <Digit digit={0} />
-    <Digit digit={0} />
-  </time>
+  <TimeDisplay />
   <div class="status" aria-live="polite">
     <div class="round">
       <span class="round-label" hidden>Round</span>
@@ -34,11 +30,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
         <span class="label sr-only">Start</span>
       </button>
     </div>
-    <div class="phase" aria-label="Start">
-      <div class="phase-track" aria-hidden="true">
-        <div class="phase-label">Start</div>
-      </div>
-    </div>
+    <PhaseLabel />
   </div>
   <div class="rings" aria-hidden="true">
     <CounterRing count={DEFAULT_CONFIG.rounds} />
@@ -74,39 +66,11 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     font-family: var(--font-display);
   }
 
-  .time {
-    grid-area: time;
-    display: flex;
-    gap: 1em;
-    inline-size: 15em;
-    font-variant-numeric: tabular-nums;
-    transition: opacity 300ms ease-out;
-  }
-
   .rings {
     grid-area: rings;
     display: flex;
     justify-content: space-between;
     margin-inline: -0.4em;
-  }
-
-  .time-separator {
-    --size: 0.6em;
-    display: flex;
-    align-self: center;
-    flex-direction: column;
-    row-gap: calc(var(--size) * 2.5);
-
-    &::before,
-    &::after {
-      content: "";
-      display: block;
-      width: var(--size);
-      height: var(--size);
-      background-color: var(--color-digit, var(--color-fg));
-      border-radius: 50%;
-      transition: background-color 1s steps(1, jump-start);
-    }
   }
 
   .round {
@@ -173,14 +137,6 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
       cursor: wait;
     }
 
-    .time-separator {
-      --color-digit: var(--color-fg-subtle);
-    }
-
-    .phase {
-      animation: pulse 1s steps(1, jump-start) 3;
-    }
-
     .playback:disabled {
       cursor: default;
       pointer-events: none;
@@ -192,17 +148,6 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
       cursor: wait;
     }
 
-    .time-separator {
-      --color-digit: var(--color-fg-subtle);
-
-      &::before {
-        transition-delay: 2s;
-      }
-      &::after {
-        transition-delay: 1s;
-      }
-    }
-
     .playback:disabled {
       cursor: default;
       pointer-events: none;
@@ -210,15 +155,6 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
   }
 
   :global([data-status="paused"]) {
-    .time {
-      opacity: 0.25;
-    }
-
-    .time-separator,
-    :global(.digit path) {
-      animation: pulse 1s steps(1, jump-start) infinite;
-    }
-
     .playback {
       opacity: 1;
     }
@@ -228,53 +164,13 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     }
   }
 
-  :global([data-status="complete"]) {
-    .time-separator,
-    :global(.digit path),
-    :global(.phase-label),
-    .rings {
-      animation: pulse 1s steps(1, jump-start) 3 forwards;
-    }
+  :global([data-status="complete"]) .rings {
+    animation: pulse 1s steps(1, jump-start) 3 forwards;
   }
 
   .playback[data-action="play"] :global([data-icon="pause"]),
   .playback[data-action="pause"] :global([data-icon="play"]) {
     display: none;
-  }
-
-  .phase {
-    overflow: hidden;
-    line-height: 1;
-    block-size: 1lh;
-    text-align: end;
-    pointer-events: none;
-  }
-
-  .phase :global(.phase-track) {
-    display: flex;
-    flex-direction: column;
-    align-items: end;
-    will-change: transform;
-  }
-
-  .phase :global(.phase-label) {
-    display: block;
-    flex: 0 0 1.2em;
-    block-size: 1lh;
-    line-height: 1;
-    white-space: nowrap;
-    text-align: end;
-    color: var(--color-digit, var(--color-fg));
-  }
-
-  .phase[data-tone="work"],
-  .phase :global(.phase-label[data-tone="work"]) {
-    color: var(--color-work);
-  }
-
-  .phase[data-tone="rest"],
-  .phase :global(.phase-label[data-tone="rest"]) {
-    color: var(--color-rest);
   }
 
   @media (min-aspect-ratio: 920/600) {

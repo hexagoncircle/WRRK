@@ -1,0 +1,60 @@
+---
+import { LABEL } from "../scripts/labels.js";
+
+interface Props {
+  label?: string;
+}
+
+const { label = LABEL.idle } = Astro.props;
+---
+
+<div class="phase" aria-label={label}>
+  <div class="phase-track" aria-hidden="true">
+    <div class="phase-label">{label}</div>
+  </div>
+</div>
+
+<style>
+  .phase {
+    overflow: hidden;
+    line-height: 1;
+    block-size: 1lh;
+    text-align: end;
+    pointer-events: none;
+  }
+
+  .phase :global(.phase-track) {
+    display: flex;
+    flex-direction: column;
+    align-items: end;
+    will-change: transform;
+  }
+
+  .phase :global(.phase-label) {
+    display: block;
+    flex: 0 0 1.2em;
+    block-size: 1lh;
+    line-height: 1;
+    white-space: nowrap;
+    text-align: end;
+    color: var(--color-digit, var(--color-fg));
+  }
+
+  .phase[data-tone="work"],
+  .phase :global(.phase-label[data-tone="work"]) {
+    color: var(--color-work);
+  }
+
+  .phase[data-tone="rest"],
+  .phase :global(.phase-label[data-tone="rest"]) {
+    color: var(--color-rest);
+  }
+
+  :global([data-status="preparing"]) .phase {
+    animation: pulse 1s steps(1, jump-start) 3;
+  }
+
+  :global([data-status="complete"]) .phase :global(.phase-label) {
+    animation: pulse 1s steps(1, jump-start) 3 forwards;
+  }
+</style>

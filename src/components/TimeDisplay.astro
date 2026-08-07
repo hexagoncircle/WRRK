@@ -1,0 +1,69 @@
+---
+import Digit from "./Digit.astro";
+---
+
+<time class="time" datetime="PT0M0S" aria-label="0:00">
+  <Digit digit={0} />
+  <span class="time-separator"></span>
+  <Digit digit={0} />
+  <Digit digit={0} />
+</time>
+
+<style>
+  .time {
+    grid-area: time;
+    display: flex;
+    gap: 1em;
+    inline-size: 15em;
+    font-variant-numeric: tabular-nums;
+    transition: opacity 300ms ease-out;
+  }
+
+  .time-separator {
+    --size: 0.6em;
+    display: flex;
+    align-self: center;
+    flex-direction: column;
+    row-gap: calc(var(--size) * 2.5);
+
+    &::before,
+    &::after {
+      content: "";
+      display: block;
+      width: var(--size);
+      height: var(--size);
+      background-color: var(--color-digit, var(--color-fg));
+      border-radius: 50%;
+      transition: background-color 1s steps(1, jump-start);
+    }
+  }
+
+  :global([data-status="preparing"]) .time-separator {
+    --color-digit: var(--color-fg-subtle);
+  }
+
+  :global([data-status="countdown"]) .time-separator {
+    --color-digit: var(--color-fg-subtle);
+
+    &::before {
+      transition-delay: 2s;
+    }
+    &::after {
+      transition-delay: 1s;
+    }
+  }
+
+  :global([data-status="paused"]) .time {
+    opacity: 0.25;
+  }
+
+  :global([data-status="paused"]) .time-separator,
+  :global([data-status="paused"]) .time :global(.digit path) {
+    animation: pulse 1s steps(1, jump-start) infinite;
+  }
+
+  :global([data-status="complete"]) .time-separator,
+  :global([data-status="complete"]) .time :global(.digit path) {
+    animation: pulse 1s steps(1, jump-start) 3 forwards;
+  }
+</style>
