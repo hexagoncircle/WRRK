@@ -13,16 +13,15 @@
 .btn {
   all: unset;
   cursor: pointer;
-  border-radius: 50%;
-  padding: 1vmin;
+  border-radius: 0.2em;
+  margin-block: -0.15em;
+  padding: 0.3em;
   aspect-ratio: 1;
   display: grid;
   place-items: center;
-  outline-offset: var(--focus-ring-offset-start);
-  transition: var(--focus-ring-transition);
+  touch-action: manipulation;
 
   &:focus-visible {
-    outline: var(--focus-ring-outline);
-    outline-offset: var(--focus-ring-offset);
+    background-color: var(--color-fg-subtle);
   }
 }

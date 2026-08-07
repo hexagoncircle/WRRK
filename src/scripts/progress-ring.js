@@ -58,7 +58,7 @@ export function createProgressRing(root) {
     if (instant) {
       el.style.transition = "none";
       apply();
-      void el.getBoundingClientRect();
+      el.getBoundingClientRect();
       el.style.removeProperty("transition");
       return;
     }

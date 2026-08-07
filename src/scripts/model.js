@@ -22,7 +22,8 @@ import { clamp } from "./utils.js";
 export const DURATION_MIN = 5;
 export const DURATION_MAX = 9 * 60 + 59; // 9:59
 export const DURATION_STEP = 5;
-export const READY_COUNT = 3;
+export const COUNTDOWN_SECONDS = 3;
+export const PREPARE_SECONDS = 3;
 export const ROUNDS_MAX = 100;
 
 export const DEFAULT_CONFIG = Object.freeze({
@@ -51,8 +52,16 @@ function toNonNegativeInt(value) {
  */
 export function createConfig(input = {}) {
   return {
-    workSeconds: clamp(toNonNegativeInt(input.workSeconds ?? DEFAULT_CONFIG.workSeconds), DURATION_MIN, DURATION_MAX),
-    restSeconds: clamp(toNonNegativeInt(input.restSeconds ?? DEFAULT_CONFIG.restSeconds), DURATION_MIN, DURATION_MAX),
+    workSeconds: clamp(
+      toNonNegativeInt(input.workSeconds ?? DEFAULT_CONFIG.workSeconds),
+      DURATION_MIN,
+      DURATION_MAX,
+    ),
+    restSeconds: clamp(
+      toNonNegativeInt(input.restSeconds ?? DEFAULT_CONFIG.restSeconds),
+      DURATION_MIN,
+      DURATION_MAX,
+    ),
     rounds: clamp(toNonNegativeInt(input.rounds ?? DEFAULT_CONFIG.rounds), 1, ROUNDS_MAX),
   };
 }
@@ -91,6 +100,16 @@ export function toPhases(config) {
 }
 
 /**
+ * Total workout duration in seconds (final rest omitted).
+ * @param {TimerConfig} config
+ * @returns {number}
+ */
+export function totalWorkoutSeconds(config) {
+  const restRounds = Math.max(0, config.rounds - 1);
+  return config.workSeconds * config.rounds + config.restSeconds * restRounds;
+}
+
+/**
  * @param {unknown} value
  * @returns {TimerConfig | null}
  */
@@ -98,10 +117,7 @@ export function normalizeStoredConfig(value) {
   if (!value || typeof value !== "object") return null;
 
   const record = /** @type {Record<string, unknown>} */ (value);
-  if (
-    typeof record.workSeconds !== "number" &&
-    typeof record.workSeconds !== "string"
-  ) {
+  if (typeof record.workSeconds !== "number" && typeof record.workSeconds !== "string") {
     return null;
   }
 

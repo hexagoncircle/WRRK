@@ -11,10 +11,9 @@ export class WakeLockController {
     /** @type {Promise<void> | null} */
     this._pending = null;
 
-    // Platform drops the lock when hidden; reacquire when visible again.
     document.addEventListener("visibilitychange", () => {
       if (this._enabled && document.visibilityState === "visible") {
-        void this._acquire();
+        this._acquire();
       }
     });
   }
@@ -39,7 +38,6 @@ export class WakeLockController {
     if (document.visibilityState !== "visible") return;
     if (this._sentinel && !this._sentinel.released) return;
 
-    // Overlapping calls would each get their own sentinel, leaking all but the last.
     this._pending ??= this._requestSentinel();
     await this._pending;
   }
@@ -48,7 +46,6 @@ export class WakeLockController {
     try {
       const sentinel = await navigator.wakeLock.request("screen");
 
-      // Disabled or hidden while awaiting — don't keep the lock.
       if (!this._enabled || document.visibilityState !== "visible") {
         await sentinel.release().catch(() => {});
         return;

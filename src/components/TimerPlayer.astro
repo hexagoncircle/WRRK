@@ -3,9 +3,11 @@ import Digit from "./Digit.astro";
 import CounterRing from "./CounterRing.astro";
 import ProgressRing from "./ProgressRing.astro";
 import { Icon } from "astro-icon/components";
-import { DEFAULT_CONFIG } from "../scripts/model.js";
+import { formatMSS } from "../scripts/format.js";
+import { DEFAULT_CONFIG, totalWorkoutSeconds } from "../scripts/model.js";
 
 const { class: className, ...rest } = Astro.props;
+const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
 ---
 
 <article class:list={["timer-player", className]} data-player {...rest}>
@@ -18,7 +20,8 @@ const { class: className, ...rest } = Astro.props;
   <div class="status" aria-live="polite">
     <div class="round">
       <span class="round-label" hidden>Round</span>
-      <output class="round-current">––</output>
+      <Icon name="clock" aria-hidden="true" />
+      <output class="round-current">{totalTime}</output>
     </div>
     <div class="controls">
       <button type="button" class="btn reset">
@@ -51,9 +54,8 @@ const { class: className, ...rest } = Astro.props;
       "status"
       "time"
       "rings";
-    grid-template-rows: auto 1fr auto;
     column-gap: 3em;
-    row-gap: 1em;
+    row-gap: inherit;
     justify-content: center;
     min-width: 0;
     margin: auto;
@@ -64,10 +66,11 @@ const { class: className, ...rest } = Astro.props;
   .status {
     grid-area: status;
     display: flex;
-    gap: 0.5em;
+    gap: 0.2em;
     align-items: center;
     inline-size: 100%;
     font-size: 1.4em;
+    line-height: 1;
     font-family: var(--font-display);
   }
 
@@ -75,9 +78,8 @@ const { class: className, ...rest } = Astro.props;
     grid-area: time;
     display: flex;
     gap: 1em;
-    font-variant-numeric: tabular-nums;
-    color: #ffffff;
     inline-size: 15em;
+    font-variant-numeric: tabular-nums;
     transition: opacity 300ms ease-out;
   }
 
@@ -85,11 +87,11 @@ const { class: className, ...rest } = Astro.props;
     grid-area: rings;
     display: flex;
     justify-content: space-between;
-    margin-inline: calc(var(--ring-gap) * -1px);
+    margin-inline: -0.4em;
   }
 
   .time-separator {
-    --size: 3vmin;
+    --size: 0.6em;
     display: flex;
     align-self: center;
     flex-direction: column;
@@ -109,35 +111,46 @@ const { class: className, ...rest } = Astro.props;
 
   .round {
     display: flex;
-    gap: 2vmin;
+    align-items: center;
+    gap: 0.3em;
+  }
+
+  [data-icon="clock"] {
+    --size: 0.8em;
+    width: var(--size);
+    height: var(--size);
+  }
+
+  :global([data-status]:not([data-status="idle"])) :global([data-icon="clock"]) {
+    display: none;
   }
 
   .controls {
     display: flex;
-    gap: 1vmin;
     align-items: start;
     font-size: 0.8em;
     margin-inline-start: auto;
   }
 
   .controls [data-icon] {
-    --size: 0.8em;
+    --size: 0.9em;
     width: var(--size);
     height: var(--size);
   }
 
-  /* position: static so ::before can cover the positioned .timer-player */
   .playback {
     position: static;
     cursor: pointer;
     opacity: 0;
 
+    [data-icon="play"] {
+      translate: -0.05em;
+    }
+
     &::before {
       content: "";
-      display: block;
       position: absolute;
       inset: 0;
-      z-index: 0;
     }
 
     &:focus-visible {
@@ -156,6 +169,25 @@ const { class: className, ...rest } = Astro.props;
   }
 
   :global([data-status="preparing"]) {
+    .timer-player {
+      cursor: wait;
+    }
+
+    .time-separator {
+      --color-digit: var(--color-fg-subtle);
+    }
+
+    .phase {
+      animation: pulse 1s steps(1, jump-start) 3;
+    }
+
+    .playback:disabled {
+      cursor: default;
+      pointer-events: none;
+    }
+  }
+
+  :global([data-status="countdown"]) {
     .timer-player {
       cursor: wait;
     }
@@ -212,8 +244,8 @@ const { class: className, ...rest } = Astro.props;
 
   .phase {
     overflow: hidden;
-    line-height: 1.2;
-    block-size: 1.2em;
+    line-height: 1;
+    block-size: 1lh;
     text-align: end;
     pointer-events: none;
   }
@@ -228,8 +260,8 @@ const { class: className, ...rest } = Astro.props;
   .phase :global(.phase-label) {
     display: block;
     flex: 0 0 1.2em;
-    block-size: 1.2em;
-    line-height: 1.2;
+    block-size: 1lh;
+    line-height: 1;
     white-space: nowrap;
     text-align: end;
     color: var(--color-digit, var(--color-fg));
@@ -245,7 +277,7 @@ const { class: className, ...rest } = Astro.props;
     color: var(--color-rest);
   }
 
-  @media (min-aspect-ratio: 900/600) {
+  @media (min-aspect-ratio: 920/600) {
     .timer-player {
       grid-template-areas:
         "time rings"

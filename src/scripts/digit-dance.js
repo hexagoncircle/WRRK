@@ -159,10 +159,7 @@ function buildSettleSequence(digit, { fg, subtle, step, at, digitValue }) {
  * }} options
  * @returns {{ sequence: any[], end: number }}
  */
-function buildDigitDanceSequence(
-  digit,
-  { fg, subtle, budgetSeconds = null, at = 0, digitValue },
-) {
+function buildDigitDanceSequence(digit, { fg, subtle, budgetSeconds = null, at = 0, digitValue }) {
   const value = digitValue ?? digit.dataset.digit ?? "0";
   const settle = settleOrder(value);
   const { duration, step, steps } = danceTimings(budgetSeconds, settle.length);
@@ -194,11 +191,11 @@ function trackControls(controls, digits) {
     }
   };
 
-  void controls.then(clear, clear);
+  controls.then(clear, clear);
   return controls;
 }
 
-/** Stop any active dance / prepare timeline and clear inline fills. */
+/** Stop any active dance / countdown timeline and clear inline fills. */
 export function cancelDigitDance() {
   const digits = activeDigits;
   const controls = activeControls;
@@ -245,22 +242,27 @@ export function playDigitDance(digits, { budgetSeconds = null } = {}) {
     { duration: 0, at: maxEnd },
   ]);
 
-  // Anchor timeline length so Motion keeps the full sequence in range.
   sequence.push([() => {}, { duration: maxEnd, at: 0, ease: "linear" }]);
 
   return trackControls(animate(sequence), list);
 }
 
 /**
- * Prepare countdown: ones digit counts 3→2→1 statically; the other digits dance.
+ * Prep: all digits figure-8 in lockstep. On the last prep beat, the ones digit
+ * is interrupted mid-loop and settles into the first countdown number at chase
+ * tempo. Countdown: ones snaps count→1 while the other digits keep chasing.
  * @param {Iterable<Element>} digits
  * @param {{
  *   count?: number,
  *   beatSeconds?: number,
+ *   prepSeconds?: number,
  *   onBeat?: (n: number) => void,
  * }} [options]
  */
-export function playPrepareCountdown(digits, { count = 3, beatSeconds = 1, onBeat } = {}) {
+export function playCountdown(
+  digits,
+  { count = 3, beatSeconds = 1, prepSeconds = 0, onBeat } = {},
+) {
   const list = [...digits];
   if (list.length === 0) return null;
 
@@ -268,20 +270,94 @@ export function playPrepareCountdown(digits, { count = 3, beatSeconds = 1, onBea
 
   const ones = list[list.length - 1];
   const dancers = list.slice(0, -1);
+  const firstValue = String(count);
 
-  for (const d of dancers) d.dataset.digit = "";
-  ones.dataset.digit = String(count);
+  for (const d of list) d.dataset.digit = "";
 
   const { fg, subtle } = themeColors(list[0]);
   setFills(list, subtle);
 
-  const chase = danceTimings(beatSeconds);
   /** @type {any[]} */
   const sequence = [];
-  const total = count * beatSeconds;
+  const total = prepSeconds + count * beatSeconds;
+  const chase = danceTimings(beatSeconds);
+  const prepBeats = Math.max(0, Math.round(prepSeconds / beatSeconds));
+  const settleBeat = prepBeats > 0 ? prepBeats - 1 : -1;
+
+  for (let beat = 0; beat < prepBeats; beat++) {
+    const t = beat * beatSeconds;
+
+    if (beat === settleBeat) {
+      const halfSteps = Math.max(1, Math.floor(chase.steps / 2));
+      const halfEnd = t + (halfSteps - 1) * chase.step + chase.duration;
+
+      sequence.push(
+        ...buildFigure8Sequence(ones, {
+          fg,
+          subtle,
+          duration: chase.duration,
+          step: chase.step,
+          steps: halfSteps,
+          at: t,
+        }).sequence,
+      );
+
+      for (const d of dancers) {
+        sequence.push(
+          ...buildFigure8Sequence(d, {
+            fg,
+            subtle,
+            ...chase,
+            at: t,
+          }).sequence,
+        );
+      }
+
+      sequence.push([
+        toggle(
+          () => {
+            ones.dataset.digit = firstValue;
+          },
+          () => {
+            ones.dataset.digit = "";
+            setFills([ones], subtle);
+          },
+        ),
+        { duration: 0, at: halfEnd },
+      ]);
+
+      const settled = buildSettleSequence(ones, {
+        fg,
+        subtle,
+        step: chase.step,
+        at: halfEnd,
+        digitValue: firstValue,
+      });
+      sequence.push(...settled.sequence);
+      sequence.push([
+        toggle(
+          () => setFills([ones], null),
+          () => setFills([ones], subtle),
+        ),
+        { duration: 0, at: settled.end },
+      ]);
+      continue;
+    }
+
+    for (const d of list) {
+      sequence.push(
+        ...buildFigure8Sequence(d, {
+          fg,
+          subtle,
+          ...chase,
+          at: t,
+        }).sequence,
+      );
+    }
+  }
 
   for (let beat = 0; beat < count; beat++) {
-    const t = beat * beatSeconds;
+    const t = prepSeconds + beat * beatSeconds;
     const n = count - beat;
     const value = String(n);
 
@@ -293,8 +369,8 @@ export function playPrepareCountdown(digits, { count = 3, beatSeconds = 1, onBea
           onBeat?.(n);
         },
         () => {
-          ones.dataset.digit = beat === 0 ? "" : String(n + 1);
-          setFills([ones], subtle);
+          ones.dataset.digit = beat === 0 ? firstValue : String(n + 1);
+          setFills([ones], beat === 0 ? null : subtle);
         },
       ),
       { duration: 0, at: t },

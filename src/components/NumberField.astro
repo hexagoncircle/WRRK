@@ -34,17 +34,19 @@ const roleDescription = duration ? "Duration" : "Number field";
       <button type="button" class="decrement" aria-label={`Decrease ${label}`} tabindex="-1">
         <Icon name="minus" aria-hidden="true" />
       </button>
-      <input
-        id={inputId}
-        class="input"
-        type="text"
-        name={name}
-        value={inputValue}
-        inputmode="numeric"
-        autocomplete="off"
-        spellcheck="false"
-        aria-roledescription={roleDescription}
-      />
+      <div class="input-wrapper">
+        <input
+          id={inputId}
+          class="input"
+          type="text"
+          name={name}
+          value={inputValue}
+          inputmode="numeric"
+          autocomplete="off"
+          spellcheck="false"
+          aria-roledescription={roleDescription}
+        />
+      </div>
       <button type="button" class="increment" aria-label={`Increase ${label}`} tabindex="-1">
         <Icon name="plus" aria-hidden="true" />
       </button>
@@ -58,11 +60,11 @@ const roleDescription = duration ? "Duration" : "Number field";
     text-align: center;
     display: grid;
     justify-content: center;
-    scroll-margin-block: 25vh;
-    font-size: clamp(1.5rem, 5vmin, 2em);
+    font-size: clamp(1.65rem, 1em, 2em);
 
-    &:hover {
-      z-index: 1;
+    &:focus-within button {
+      opacity: 1;
+      pointer-events: auto;
     }
   }
 
@@ -71,7 +73,6 @@ const roleDescription = duration ? "Duration" : "Number field";
     grid-column: 1 / -1;
     padding-block-end: 0.25em;
     margin-block-start: -0.25em;
-    transition: color 200ms ease-out;
   }
 
   .text {
@@ -82,24 +83,31 @@ const roleDescription = duration ? "Duration" : "Number field";
 
   .wrapper {
     position: relative;
-    display: grid;
+    display: flex;
+    align-items: center;
     border: 1px solid transparent;
     border-radius: calc(infinity * 1px);
+    isolation: isolate;
   }
 
   input {
     all: unset;
     width: 4ch;
-    padding: 0;
     font: inherit;
     font-size: 1.1em;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
     text-align: center;
     background: transparent;
-    outline: none;
     color: inherit;
     cursor: pointer;
     caret-color: transparent;
+    border-radius: 0.25em;
+    padding-inline: 0.05em;
+
+    &:focus {
+      background-color: var(--color-fg-subtle);
+    }
 
     &::selection {
       background-color: transparent;
@@ -116,9 +124,12 @@ const roleDescription = duration ? "Duration" : "Number field";
     padding: 0.25rem 0.5rem;
     opacity: 0;
     font-size: 0.9em;
-    scale: 0.9;
-    transition: 150ms ease-out;
-    transition-property: opacity, scale;
+    z-index: 1;
+    pointer-events: none;
+
+    &:active {
+      transform: translateY(1px);
+    }
 
     :global([data-icon]) {
       flex: none;

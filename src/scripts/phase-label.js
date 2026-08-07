@@ -101,8 +101,6 @@ export function createPhaseLabel(root) {
     const incoming = makeLabel(next, nextTone);
     const fromTop = from === "top";
 
-    // From bottom: [out, in] slide up. From top: [in, out] slide down into place.
-    // Seed the start transform before paint so from-top doesn't flash the incoming label.
     track.replaceChildren(...(fromTop ? [incoming, outgoing] : [outgoing, incoming]));
     if (fromTop) track.style.transform = `translateY(-${LINE})`;
     else track.removeAttribute("style");
@@ -120,11 +118,11 @@ export function createPhaseLabel(root) {
     );
     active = controls;
 
-    void controls.then(
+    controls.then(
       () => {
         if (active !== controls) return;
         active = null;
-        track.replaceChildren(incoming);
+        outgoing.remove();
         track.removeAttribute("style");
         applyRootTone(nextTone);
       },
@@ -144,13 +142,11 @@ export function createPhaseLabel(root) {
     const resolvedTone = normalizeTone(nextTone);
     if (next === text && resolvedTone === tone && !active) return;
 
-    // Complete appears instantly (CSS pulses via [data-status="complete"]).
     if (next === LABEL.complete) {
       snap(next, resolvedTone);
       return;
     }
 
-    // Returning to Start (from Complete/Paused) appears instantly.
     if (
       next === LABEL.start &&
       (text === LABEL.complete || text === LABEL.paused)

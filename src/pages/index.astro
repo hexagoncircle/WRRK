@@ -21,10 +21,7 @@ import {
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, interactive-widget=resizes-content"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="generator" content={Astro.generator} />
     <meta name="theme-color" content="#111111" />
     <meta name="description" content="A simple interval timer for workouts." />
@@ -73,9 +70,7 @@ import {
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").catch(() => {
-            /* Service worker registration is best-effort. */
-          });
+          navigator.serviceWorker.register("/sw.js").catch(() => {});
         });
       }
     </script>
@@ -86,10 +81,12 @@ import {
   .screen {
     display: flex;
     flex-direction: column-reverse;
-    column-gap: 15vmin;
+    column-gap: 3em;
+    row-gap: 1.5em;
     width: fit-content;
     min-height: 100%;
     margin-inline: auto;
+    user-select: none;
   }
 
   .setup {
@@ -99,10 +96,13 @@ import {
     margin-block-start: auto;
     flex: 0 1 auto;
     display: flex;
-    row-gap: 4vmin;
-    padding-block-start: 4vmin;
+    row-gap: 0.8em;
     justify-content: space-between;
-    transition: color 0.3s ease-out;
+    transition: color 300ms ease-out;
+
+    &:focus-within :global(.number-field:not(:focus-within)) {
+      color: var(--color-fg-muted);
+    }
   }
 
   .screen:not([data-status="idle"]) > .setup {
@@ -111,30 +111,15 @@ import {
     user-select: none;
   }
 
-  .setup:not(:hover) :global(.number-field:not([data-disabled]):focus-within button) {
-    opacity: 1;
-    scale: 1;
-  }
-
-  .setup :global(.number-field:not([data-disabled]):hover button) {
-    opacity: 1;
-    scale: 1;
-  }
-
-  .setup:not(:hover):focus-within :global(.number-field:not(:focus-within)) {
-    color: var(--color-fg-muted);
-  }
-
   .sound {
     position: fixed;
-    top: 1rem;
-    right: 1rem;
+    top: 0.4em;
+    right: 0.4em;
   }
 
-  @media (min-aspect-ratio: 900/600) {
+  @media (min-aspect-ratio: 700/600) {
     .screen {
       flex-direction: row;
-      min-height: unset;
       height: fit-content;
       margin-block: auto;
     }

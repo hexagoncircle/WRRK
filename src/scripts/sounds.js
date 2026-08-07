@@ -1,5 +1,36 @@
 /** @type {AudioContext | null} */
 let ctx = null;
+/** @type {GainNode | null} */
+let master = null;
+
+const MUTED_STORAGE_KEY = "interval-timer:muted";
+
+/** @returns {boolean} */
+function loadMutedPreference() {
+  try {
+    return localStorage.getItem(MUTED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+/** @param {boolean} value */
+function saveMutedPreference(value) {
+  try {
+    localStorage.setItem(MUTED_STORAGE_KEY, String(value));
+  } catch {
+    // Best-effort; quota / private mode may reject writes.
+  }
+}
+
+let muted = loadMutedPreference();
+
+const SOURCE_STOP_PADDING = 0.05;
+const CLEANUP_MARGIN = 0.05;
+const LOOKAHEAD = 0.02;
+const INAUDIBLE_GAIN = 0.001;
+const ENVELOPE_FLOOR = 0.0001;
+const OUTPUT_GAIN = 4;
 
 const NOTE_OFFSETS = {
   C: 0,
@@ -11,13 +42,354 @@ const NOTE_OFFSETS = {
   B: 11,
 };
 
-/** Random value in `[base - amount, base + amount]`. */
-function randomRange(base, amount) {
-  return base + (Math.random() * 2 - 1) * amount;
-}
+const MELODIC_SHIMMER = {
+  delay: 0.1,
+  feedback: 0.22,
+  wet: 0.16,
+  lowpass: 4500,
+};
 
 /**
- * Convert a note name (e.g. "C4", "F#5", "Bb3") to frequency in Hz.
+ * @typedef {{
+ *   delay: number,
+ *   feedback: number,
+ *   wet: number,
+ *   lowpass: number,
+ * }} Shimmer
+ */
+
+/**
+ * @typedef {{
+ *   kind: "tone",
+ *   note?: string,
+ *   frequency?: number,
+ *   waveform?: OscillatorType,
+ *   offset?: number,
+ *   attack: number,
+ *   decay: number,
+ *   peak: number,
+ *   detune?: number,
+ *   glideTo?: number | string,
+ *   glideTime?: number,
+ * }} ToneLayer
+ */
+
+/**
+ * @typedef {{
+ *   kind: "noise",
+ *   filterType: BiquadFilterType,
+ *   filterFrequency: number,
+ *   filterQ?: number,
+ *   filterGlideTo?: number,
+ *   filterGlideTime?: number,
+ *   offset?: number,
+ *   attack: number,
+ *   decay: number,
+ *   peak: number,
+ * }} NoiseLayer
+ */
+
+/** @typedef {ToneLayer | NoiseLayer} SoundLayer */
+
+/**
+ * @typedef {{
+ *   masterGain: number,
+ *   layers: SoundLayer[],
+ *   shimmer?: Shimmer,
+ * }} SoundRecipe
+ */
+
+/** @type {Record<string, SoundRecipe>} */
+const RECIPES = {
+  blip: {
+    masterGain: 0.5,
+    layers: [
+      {
+        kind: "tone",
+        note: "C#5",
+        attack: 0.008,
+        decay: 0.1,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "G#5",
+        attack: 0.008,
+        decay: 0.1,
+        peak: 0.02,
+        offset: 0.02,
+      },
+    ],
+  },
+  completed: {
+    masterGain: 0.55,
+    layers: [
+      { kind: "tone", note: "C#5", attack: 0.006, decay: 0.18, peak: 0.08 },
+      {
+        kind: "tone",
+        note: "G#5",
+        offset: 0.09,
+        attack: 0.006,
+        decay: 0.18,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "F5",
+        offset: 0.18,
+        attack: 0.006,
+        decay: 0.18,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "B5",
+        offset: 0.27,
+        attack: 0.006,
+        decay: 0.2,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "C#6",
+        offset: 0.36,
+        attack: 0.006,
+        decay: 0.28,
+        peak: 0.09,
+      },
+    ],
+    shimmer: { delay: 0.12, feedback: 0.25, wet: 0.2, lowpass: 4000 },
+  },
+  mute: {
+    masterGain: 0.3,
+    layers: [
+      { kind: "tone", note: "E5", attack: 0.002, decay: 0.1, peak: 0.09 },
+      {
+        kind: "tone",
+        note: "C#5",
+        offset: 0.09,
+        attack: 0.002,
+        decay: 0.1,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "A4",
+        offset: 0.18,
+        attack: 0.002,
+        decay: 0.1,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "G#4",
+        offset: 0.26,
+        attack: 0.002,
+        decay: 0.1,
+        peak: 0.08,
+      },
+    ],
+  },
+  pause: {
+    masterGain: 0.55,
+    layers: [
+      { kind: "tone", note: "G#5", attack: 0.006, decay: 0.2, peak: 0.09 },
+      {
+        kind: "tone",
+        note: "E5",
+        offset: 0.09,
+        attack: 0.006,
+        decay: 0.2,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "G#5",
+        offset: 0.18,
+        attack: 0.006,
+        decay: 0.22,
+        peak: 0.08,
+      },
+    ],
+    shimmer: MELODIC_SHIMMER,
+  },
+  press: {
+    masterGain: 0.1,
+    layers: [
+      {
+        kind: "noise",
+        filterType: "bandpass",
+        filterFrequency: 5000,
+        filterQ: 2,
+        attack: 0.001,
+        decay: 0.01,
+        peak: 0.2,
+      },
+    ],
+  },
+  rest: {
+    masterGain: 0.55,
+    layers: [
+      { kind: "tone", note: "B5", attack: 0.006, decay: 0.2, peak: 0.09 },
+      {
+        kind: "tone",
+        note: "G#5",
+        offset: 0.09,
+        attack: 0.006,
+        decay: 0.2,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "A4",
+        offset: 0.18,
+        attack: 0.006,
+        decay: 0.24,
+        peak: 0.07,
+      },
+    ],
+    shimmer: MELODIC_SHIMMER,
+  },
+  reset: {
+    masterGain: 0.55,
+    layers: [
+      { kind: "tone", note: "G#5", attack: 0.006, decay: 0.14, peak: 0.08 },
+      {
+        kind: "tone",
+        note: "E4",
+        offset: 0.04,
+        attack: 0.004,
+        decay: 0.2,
+        peak: 0.02,
+      },
+    ],
+    shimmer: MELODIC_SHIMMER,
+  },
+  resume: {
+    masterGain: 0.55,
+    layers: [
+      { kind: "tone", note: "C#5", attack: 0.006, decay: 0.2, peak: 0.09 },
+      {
+        kind: "tone",
+        note: "G#5",
+        offset: 0.09,
+        attack: 0.006,
+        decay: 0.2,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "E5",
+        offset: 0.18,
+        attack: 0.006,
+        decay: 0.22,
+        peak: 0.08,
+      },
+    ],
+    shimmer: MELODIC_SHIMMER,
+  },
+  start: {
+    masterGain: 0.5,
+    layers: [
+      {
+        kind: "tone",
+        waveform: "sine",
+        note: "C#5",
+        attack: 0.004,
+        decay: 0.09,
+        peak: 0.06,
+      },
+      {
+        kind: "tone",
+        waveform: "sine",
+        note: "G#5",
+        offset: 0.06,
+        attack: 0.004,
+        decay: 0.1,
+        peak: 0.06,
+      },
+      {
+        kind: "tone",
+        waveform: "sine",
+        note: "C#6",
+        offset: 0.12,
+        attack: 0.004,
+        decay: 0.18,
+        peak: 0.07,
+      },
+    ],
+    shimmer: { delay: 0.2, feedback: 0.1, wet: 0.2, lowpass: 800 },
+  },
+  toggle: {
+    masterGain: 0.4,
+    layers: [
+      {
+        kind: "noise",
+        filterType: "bandpass",
+        filterFrequency: 4000,
+        filterQ: 2,
+        attack: 0.001,
+        decay: 0.01,
+        peak: 0.08,
+      },
+      {
+        kind: "noise",
+        filterType: "bandpass",
+        filterFrequency: 2000,
+        filterQ: 1.6,
+        offset: 0.024,
+        attack: 0.001,
+        decay: 0.02,
+        peak: 0.1,
+      },
+    ],
+  },
+  work: {
+    masterGain: 0.55,
+    layers: [
+      { kind: "tone", note: "C#5", attack: 0.006, decay: 0.2, peak: 0.09 },
+      {
+        kind: "tone",
+        note: "G#5",
+        offset: 0.09,
+        attack: 0.006,
+        decay: 0.22,
+        peak: 0.08,
+      },
+    ],
+    shimmer: MELODIC_SHIMMER,
+  },
+  unmute: {
+    masterGain: 0.3,
+    layers: [
+      {
+        kind: "tone",
+        note: "A4",
+        attack: 0.002,
+        decay: 0.1,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "C#5",
+        offset: 0.09,
+        attack: 0.002,
+        decay: 0.1,
+        peak: 0.08,
+      },
+      {
+        kind: "tone",
+        note: "E5",
+        offset: 0.18,
+        attack: 0.002,
+        decay: 0.1,
+        peak: 0.09,
+      },
+    ],
+  },
+};
+
+/**
  * @param {string} note
  * @returns {number | null}
  */
@@ -34,126 +406,232 @@ function noteToHz(note) {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-function ensureAudio() {
-  if (typeof AudioContext === "undefined") return null;
-  if (!ctx) ctx = new AudioContext();
-  return ctx;
+/**
+ * @param {{ frequency?: number, note?: string }} layer
+ * @returns {number | null}
+ */
+function resolveFrequency(layer) {
+  if (typeof layer.frequency === "number") return layer.frequency;
+  if (typeof layer.note === "string") return noteToHz(layer.note);
+  return null;
 }
 
-/**
- * Resume AudioContext from a user gesture and prime the output path
- * so the first real note isn't late on cold start.
- * @returns {Promise<void>}
- */
-export async function unlock() {
-  const audio = ensureAudio();
-  if (!audio) return;
-  if (audio.state === "suspended") {
+function setupAudio() {
+  if (ctx && master) return true;
+
+  // iOS 17+: route Web Audio through the playback session so the Silent
+  // switch does not mute timer sounds.
+  if (navigator.audioSession) {
     try {
-      await audio.resume();
+      navigator.audioSession.type = "playback";
     } catch {
-      return;
+      // Unsupported / rejected — leave default ambient
     }
   }
-  const buffer = audio.createBuffer(1, 1, audio.sampleRate);
-  const source = audio.createBufferSource();
-  source.buffer = buffer;
-  source.connect(audio.destination);
-  source.start(0);
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return false;
+
+  ctx = new AudioCtx();
+  master = ctx.createGain();
+  master.gain.value = OUTPUT_GAIN;
+  master.connect(ctx.destination);
+  return true;
 }
 
 /**
- * Short oscillator blip. Prefer `note` (e.g. "C#5"); pass `frequency` to override Hz.
- * `when` is an offset in seconds from AudioContext.currentTime.
- * `pan` is stereo position from -1 (left) to 1 (right).
- * @param {{
- *   note?: string,
- *   frequency?: number,
- *   duration?: number,
- *   when?: number,
- *   attack?: number,
- *   volume?: number,
- *   pan?: number,
- * }} [opts]
+ * Applies a standard Attack/Decay envelope to an audio source.
+ * @param {AudioContext} audio
+ * @param {AudioNode} source
+ * @param {AudioNode} destination
+ * @param {{ attack: number, decay: number, peak: number }} layer
+ * @param {number} startTime
  */
-export function playBlip({
-  note = "C#5",
-  frequency,
-  duration = 0.1,
-  when = 0,
-  attack = 0.03,
-  volume = 0.6,
-  pan = 0,
-} = {}) {
-  const audio = ensureAudio();
-  if (!audio) return;
-  if (audio.state === "suspended") void audio.resume();
+function applyEnvelope(audio, source, destination, layer, startTime) {
+  const gain = audio.createGain();
+  gain.gain.setValueAtTime(ENVELOPE_FLOOR, startTime);
+  gain.gain.exponentialRampToValueAtTime(layer.peak, startTime + layer.attack);
+  gain.gain.exponentialRampToValueAtTime(
+    ENVELOPE_FLOOR,
+    startTime + layer.attack + layer.decay,
+  );
+  source.connect(gain).connect(destination);
+}
 
-  const freq = frequency ?? noteToHz(note);
+/**
+ * @param {AudioContext} audio
+ * @param {AudioNode} destination
+ * @param {ToneLayer} layer
+ * @param {number} startTime
+ */
+function renderTone(audio, destination, layer, startTime) {
+  const freq = resolveFrequency(layer);
   if (freq == null) return;
 
-  const now = audio.currentTime + when;
+  const oscillator = audio.createOscillator();
+  oscillator.type = layer.waveform ?? "sine";
+  oscillator.frequency.setValueAtTime(freq, startTime);
+  if (layer.detune != null) oscillator.detune.value = layer.detune;
 
-  const osc = audio.createOscillator();
-  const gain = audio.createGain();
-  const panner = audio.createStereoPanner();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(freq, now);
+  if (layer.glideTo !== undefined) {
+    const glideTo = typeof layer.glideTo === "string" ? noteToHz(layer.glideTo) : layer.glideTo;
+    if (glideTo != null) {
+      const glideTime = layer.glideTime ?? layer.attack + layer.decay;
+      oscillator.frequency.exponentialRampToValueAtTime(glideTo, startTime + glideTime);
+    }
+  }
 
-  gain.gain.setValueAtTime(0, now);
-  gain.gain.linearRampToValueAtTime(volume, now + attack);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + Math.max(duration, attack + 0.01));
-  panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), now);
+  applyEnvelope(audio, oscillator, destination, layer, startTime);
 
-  osc.connect(gain);
-  gain.connect(panner);
-  panner.connect(audio.destination);
-
-  osc.start(now);
-  osc.stop(now + duration + 0.02);
-  osc.addEventListener("ended", () => {
-    osc.disconnect();
-    gain.disconnect();
-    panner.disconnect();
-  });
-}
-
-export function playClickSound() {
-  playBlip({
-    frequency: randomRange(400, 40),
-    duration: randomRange(0.01, 0.003),
-    attack: randomRange(0.0005, 0.0002),
-    volume: randomRange(0.2, 0.04),
-  });
+  oscillator.start(startTime);
+  oscillator.stop(startTime + layer.attack + layer.decay + SOURCE_STOP_PADDING);
 }
 
 /**
- * Play a sequence of blips spaced by `gap` seconds.
- * @param {string[]} notes
- * @param {{ gap?: number, duration?: number }} [opts]
+ * @param {AudioContext} audio
+ * @param {AudioNode} destination
+ * @param {NoiseLayer} layer
+ * @param {number} startTime
  */
-function playSequence(notes, { gap = 0.09, duration = 0.2 } = {}) {
-  notes.forEach((note, i) => {
-    playBlip({ note, duration, when: i * gap });
-  });
+function renderNoise(audio, destination, layer, startTime) {
+  const duration = layer.attack + layer.decay + SOURCE_STOP_PADDING;
+  const length = Math.max(1, Math.floor(duration * audio.sampleRate));
+  const buffer = audio.createBuffer(1, length, audio.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) data[i] = 2 * Math.random() - 1;
+
+  const source = audio.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = audio.createBiquadFilter();
+  filter.type = layer.filterType;
+  filter.frequency.value = layer.filterFrequency;
+  if (layer.filterQ !== undefined) filter.Q.value = layer.filterQ;
+
+  source.connect(filter);
+  applyEnvelope(audio, filter, destination, layer, startTime);
+
+  source.start(startTime);
+  source.stop(startTime + duration);
 }
 
-export function playRestSound() {
-  playSequence(["B5", "G#5", "A4"]);
+/**
+ * @param {AudioContext} audio
+ * @param {AudioNode} source
+ * @param {AudioNode} destination
+ * @param {Shimmer} shimmer
+ * @returns {AudioNode[]}
+ */
+function attachShimmer(audio, source, destination, shimmer) {
+  const delay = audio.createDelay(1);
+  delay.delayTime.value = shimmer.delay;
+
+  const feedbackFilter = audio.createBiquadFilter();
+  feedbackFilter.type = "lowpass";
+  feedbackFilter.frequency.value = shimmer.lowpass;
+
+  const feedbackGain = audio.createGain();
+  feedbackGain.gain.value = shimmer.feedback;
+
+  const wetGain = audio.createGain();
+  wetGain.gain.value = shimmer.wet;
+
+  source.connect(delay);
+  delay.connect(feedbackFilter);
+  feedbackFilter.connect(feedbackGain);
+  feedbackGain.connect(delay);
+  feedbackFilter.connect(wetGain);
+  wetGain.connect(destination);
+
+  return [delay, feedbackFilter, feedbackGain, wetGain];
 }
 
-export function playWorkSound() {
-  playSequence(["C#5", "G#5"]);
+/** @param {SoundRecipe} recipe */
+function sourceEnd(recipe) {
+  return Math.max(
+    ...recipe.layers.map(
+      (layer) => (layer.offset ?? 0) + layer.attack + layer.decay + SOURCE_STOP_PADDING,
+    ),
+  );
 }
 
-export function playPauseSound() {
-  playSequence(["G#5", "E5", "G#5"]);
+/** @param {Shimmer} [shimmer] */
+function shimmerTail(shimmer) {
+  if (!shimmer || shimmer.feedback <= 0) return 0;
+  if (shimmer.feedback >= 1) return shimmer.delay;
+  return shimmer.delay * (1 + Math.ceil(Math.log(INAUDIBLE_GAIN) / Math.log(shimmer.feedback)));
 }
 
-export function playResumeSound() {
-  playSequence(["C#5", "G#5", "E5"]);
+/**
+ * @param {AudioContext} audio
+ * @param {GainNode} output
+ * @param {SoundRecipe} recipe
+ * @param {number} startTime
+ * @param {{ volume?: number, pan?: number }} [opts]
+ */
+function renderRecipe(audio, output, recipe, startTime, { volume = 1, pan = 0 } = {}) {
+  const bus = audio.createGain();
+  bus.gain.value = recipe.masterGain * volume;
+
+  /** @type {AudioNode[]} */
+  const cleanupNodes = [bus];
+
+  const clampedPan = Math.max(-1, Math.min(1, pan));
+  if (clampedPan !== 0) {
+    const panner = audio.createStereoPanner();
+    panner.pan.setValueAtTime(clampedPan, startTime);
+    bus.connect(panner).connect(output);
+    cleanupNodes.push(panner);
+  } else {
+    bus.connect(output);
+  }
+
+  if (recipe.shimmer) {
+    cleanupNodes.push(...attachShimmer(audio, bus, output, recipe.shimmer));
+  }
+
+  for (const layer of recipe.layers) {
+    const layerStartTime = startTime + (layer.offset ?? 0);
+    if (layer.kind === "tone") renderTone(audio, bus, layer, layerStartTime);
+    else renderNoise(audio, bus, layer, layerStartTime);
+  }
+
+  const cleanupAfterMs = (sourceEnd(recipe) + shimmerTail(recipe.shimmer) + CLEANUP_MARGIN) * 1000;
+  setTimeout(() => {
+    for (const node of cleanupNodes) node.disconnect();
+  }, cleanupAfterMs);
 }
 
-export function playCompletedSound() {
-  playSequence(["C#5", "G#5", "F5", "B5", "C#6"]);
+/**
+ * When muted, `play` is a no-op until unmuted.
+ * Preference is persisted so SoundControl restores on load.
+ * @param {boolean} value
+ */
+export function setMuted(value) {
+  muted = Boolean(value);
+  saveMutedPreference(muted);
+}
+
+/** @returns {boolean} */
+export function isMuted() {
+  return muted;
+}
+
+/**
+ * Play a sound effect.
+ * @param {string} name
+ * @param {{ volume?: number, pan?: number }} [opts]
+ */
+export function play(name, opts) {
+  if (muted) return;
+  const recipe = RECIPES[name];
+  if (!recipe) return;
+  if (!setupAudio() || !ctx || !master) return;
+
+  if (ctx.state === "suspended") {
+    ctx.resume();
+  }
+
+  const startTime = ctx.currentTime + LOOKAHEAD;
+  renderRecipe(ctx, master, recipe, startTime, opts);
 }

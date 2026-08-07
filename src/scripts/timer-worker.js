@@ -1,4 +1,4 @@
-/** Posts `{ type: "tick" }` on an interval for TimerEngine. */
+/** Posts `{ type: "press" }` on an interval for TimerEngine. */
 
 /** @type {ReturnType<typeof setInterval> | null} */
 let intervalId = null;
@@ -9,7 +9,7 @@ self.addEventListener("message", (event) => {
   if (data.type === "start") {
     const interval = typeof data.interval === "number" && data.interval > 0 ? data.interval : 250;
     if (intervalId != null) clearInterval(intervalId);
-    intervalId = setInterval(() => self.postMessage({ type: "tick" }), interval);
+    intervalId = setInterval(() => self.postMessage({ type: "press" }), interval);
     return;
   }
 

@@ -1,5 +1,5 @@
 import { formatMSS } from "./format.js";
-import { playClickSound } from "./sounds.js";
+import { play } from "./sounds.js";
 import { clamp } from "./utils.js";
 
 /** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
@@ -37,26 +37,49 @@ function parseDurationInput(text) {
 /**
  * Keep a focused input visible above the on-screen keyboard.
  * iOS Safari often skips its avoidance scroll when focus handlers mutate
- * value/selection; typing then forces a layout pass. Re-run on visualViewport
- * resize so we catch the keyboard inset after it animates in.
+ * value/selection. Wait for the keyboard to change the visual viewport before
+ * scrolling — an immediate scrollIntoView races the keypad and flashes layout.
  */
 function revealFocusedInput(input) {
+  const vv = window.visualViewport;
+
   const run = () => {
     if (document.activeElement !== input) return;
-    input.scrollIntoView({ block: "center", inline: "nearest" });
+
+    const rect = input.getBoundingClientRect();
+    const viewTop = vv?.offsetTop ?? 0;
+    const viewBottom = viewTop + (vv?.height ?? window.innerHeight);
+    const pad = 12;
+
+    // Already fully visible in the visual viewport — don't fight the browser.
+    if (rect.top >= viewTop + pad && rect.bottom <= viewBottom - pad) {
+      return;
+    }
+
+    input.scrollIntoView({ block: "nearest", inline: "nearest" });
   };
 
-  run();
-  requestAnimationFrame(run);
+  if (!vv) {
+    requestAnimationFrame(run);
+    return;
+  }
 
-  const vv = window.visualViewport;
-  if (!vv) return;
+  const onViewportChange = () => run();
+  vv.addEventListener("resize", onViewportChange);
+  vv.addEventListener("scroll", onViewportChange);
 
-  const onViewportResize = () => run();
-  vv.addEventListener("resize", onViewportResize);
-  input.addEventListener("blur", () => vv.removeEventListener("resize", onViewportResize), {
-    once: true,
-  });
+  // Fallback when the keyboard is already open or resize never fires.
+  const fallback = window.setTimeout(run, 300);
+
+  input.addEventListener(
+    "blur",
+    () => {
+      vv.removeEventListener("resize", onViewportChange);
+      vv.removeEventListener("scroll", onViewportChange);
+      window.clearTimeout(fallback);
+    },
+    { once: true },
+  );
 }
 
 const supportsBeforeInput =
@@ -147,7 +170,7 @@ function enhanceNumberField(root) {
   const stepBy = (delta) => {
     if (isDisabled()) return;
     setValue(readDraft() + delta);
-    playClickSound();
+    play("press");
     if (inputFocused()) armReplace();
   };
 
@@ -157,8 +180,12 @@ function enhanceNumberField(root) {
   };
   $decrement.addEventListener("pointerdown", preserveInputFocus);
   $increment.addEventListener("pointerdown", preserveInputFocus);
-  $decrement.addEventListener("click", () => stepBy(-step));
-  $increment.addEventListener("click", () => stepBy(step));
+  $decrement.addEventListener("click", () => {
+    stepBy(-step);
+  });
+  $increment.addEventListener("click", () => {
+    stepBy(step);
+  });
 
   $input.addEventListener("focus", () => {
     if (isDuration) {

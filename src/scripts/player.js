@@ -1,22 +1,22 @@
 import { Temporal } from "@js-temporal/polyfill";
-import { cancelDigitDance, playDigitDance, playPrepareCountdown } from "./digit-dance.js";
+import {
+  cancelDigitDance,
+  playCountdown,
+  playDigitDance,
+} from "./digit-dance.js";
 import { STATUS, TimerEngine } from "./engine.js";
 import { formatDurationAttr, formatMSS } from "./format.js";
 import { LABEL } from "./labels.js";
-import { READY_COUNT } from "./model.js";
+import {
+  COUNTDOWN_SECONDS,
+  PREPARE_SECONDS,
+  totalWorkoutSeconds,
+} from "./model.js";
 import { NotificationController } from "./notifications.js";
 import { createCounterRing } from "./counter-ring.js";
 import { createPhaseLabel } from "./phase-label.js";
 import { createProgressRing } from "./progress-ring.js";
-import {
-  playBlip,
-  playRestSound,
-  playPauseSound,
-  playResumeSound,
-  playWorkSound,
-  playCompletedSound,
-  unlock as unlockAudio,
-} from "./sounds.js";
+import { play } from "./sounds.js";
 import { WakeLockController } from "./wake-lock.js";
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
@@ -54,13 +54,18 @@ export function enhancePlayer(root, options) {
 
   const $progressRing = root.querySelector(".progress-ring");
   const progressRing =
-    $progressRing instanceof HTMLElement ? createProgressRing($progressRing) : null;
+    $progressRing instanceof HTMLElement
+      ? createProgressRing($progressRing)
+      : null;
 
   const $counterRing = root.querySelector(".counter-ring");
-  const counterRing = $counterRing instanceof HTMLElement ? createCounterRing($counterRing) : null;
+  const counterRing =
+    $counterRing instanceof HTMLElement
+      ? createCounterRing($counterRing)
+      : null;
 
   /** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
-  let prepareTimeline = null;
+  let countdownTimeline = null;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let completeTimer = null;
 
@@ -97,7 +102,7 @@ export function enhancePlayer(root, options) {
   };
 
   /** @param {number} n */
-  const setPrepareLabel = (n) => {
+  const setCountdownLabel = (n) => {
     $time.dateTime = `PT${n}S`;
     $time.setAttribute("aria-label", String(n));
   };
@@ -107,6 +112,11 @@ export function enhancePlayer(root, options) {
     const pending = !current;
     $roundLabel.hidden = pending;
     $roundCurrent.textContent = pending ? "––" : String(current);
+  };
+
+  const setIdleRound = () => {
+    $roundLabel.hidden = true;
+    $roundCurrent.textContent = formatMSS(totalWorkoutSeconds(currentConfig));
   };
 
   /** @type {TimerEngine | null} */
@@ -124,13 +134,14 @@ export function enhancePlayer(root, options) {
   /** @param {number} sec */
   const blipCountdown = (sec) => {
     if (sec < 1 || sec > 3) return;
-    // 3 → right, 2 → left, 1 → right
-    const pan = sec % 2 === 0 ? -0.75 : 0.75;
-    playBlip({ pan });
+    play("blip", { pan: (2 - sec) * 0.25 });
   };
 
   const syncRingTotals = () => {
-    progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);
+    progressRing?.setTotals(
+      currentConfig.workSeconds,
+      currentConfig.restSeconds,
+    );
   };
 
   /**
@@ -140,9 +151,13 @@ export function enhancePlayer(root, options) {
   const syncRingGeometryForPhase = (phase) => {
     if (!progressRing || !phase) return;
     const lastRound = phase.round === phase.totalRounds;
-    progressRing.setTotals(currentConfig.workSeconds, lastRound ? 0 : currentConfig.restSeconds, {
-      fill: false,
-    });
+    progressRing.setTotals(
+      currentConfig.workSeconds,
+      lastRound ? 0 : currentConfig.restSeconds,
+      {
+        fill: false,
+      },
+    );
   };
 
   /**
@@ -150,7 +165,11 @@ export function enhancePlayer(root, options) {
    * @param {number} remainingSeconds
    * @param {{ settle?: boolean }} [opts]
    */
-  const syncRingProgress = (phase, remainingSeconds, { settle = false } = {}) => {
+  const syncRingProgress = (
+    phase,
+    remainingSeconds,
+    { settle = false } = {},
+  ) => {
     if (!progressRing) return;
     if (!phase || (phase.type !== "work" && phase.type !== "rest")) {
       progressRing.reset();
@@ -173,7 +192,8 @@ export function enhancePlayer(root, options) {
    * @param {Phase | null | undefined} phase
    */
   const rememberPhaseType = (phase) => {
-    lastPhaseType = phase?.type === "work" || phase?.type === "rest" ? phase.type : null;
+    lastPhaseType =
+      phase?.type === "work" || phase?.type === "rest" ? phase.type : null;
   };
 
   const syncCounterIdle = () => {
@@ -181,8 +201,11 @@ export function enhancePlayer(root, options) {
     counterRing?.showAll();
   };
 
+  const isStartup = (status = engine?.status) =>
+    status === STATUS.preparing || status === STATUS.countdown;
+
   const isActive = () =>
-    Boolean(engine && (engine.status === STATUS.running || engine.status === STATUS.preparing));
+    Boolean(engine && (engine.status === STATUS.running || isStartup()));
 
   const syncRootAttrs = () => {
     attrsRoot.dataset.status = engine?.status ?? STATUS.idle;
@@ -197,9 +220,9 @@ export function enhancePlayer(root, options) {
 
   const syncWakeLock = () => {
     if (isActive()) {
-      void wakeLock.request();
+      wakeLock.request();
     } else {
-      void wakeLock.release();
+      wakeLock.release();
     }
   };
 
@@ -210,46 +233,60 @@ export function enhancePlayer(root, options) {
     options.onRunningChange?.(!idle);
   };
 
-  const stopPrepareTimeline = () => {
-    prepareTimeline = null;
+  const stopCountdownTimeline = () => {
+    countdownTimeline = null;
     cancelDigitDance();
   };
 
-  const syncPrepareTimeline = () => {
-    if (!prepareTimeline || !engine?.phaseEndInstant) return;
-    if (engine.status !== STATUS.preparing) return;
-    const left = Temporal.Now.instant().until(engine.phaseEndInstant).total("seconds");
-    prepareTimeline.time = Math.max(0, READY_COUNT - left);
+  const syncCountdownTimeline = () => {
+    if (!countdownTimeline || !engine?.phaseEndInstant) return;
+    if (!isStartup()) return;
+    const left = Temporal.Now.instant()
+      .until(engine.phaseEndInstant)
+      .total("seconds");
+    if (engine.status === STATUS.preparing) {
+      countdownTimeline.time = Math.max(0, PREPARE_SECONDS - left);
+    } else if (engine.status === STATUS.countdown) {
+      countdownTimeline.time = Math.max(
+        0,
+        PREPARE_SECONDS + COUNTDOWN_SECONDS - left,
+      );
+    }
   };
 
-  const startPrepareTimeline = () => {
-    stopPrepareTimeline();
-    prepareTimeline = playPrepareCountdown($digits, {
-      count: READY_COUNT,
+  const startCountdownTimeline = () => {
+    stopCountdownTimeline();
+    $time.setAttribute("aria-label", LABEL.prepare);
+    countdownTimeline = playCountdown($digits, {
+      count: COUNTDOWN_SECONDS,
+      prepSeconds: PREPARE_SECONDS,
       beatSeconds: 1,
       onBeat: (n) => {
-        setPrepareLabel(n);
+        setCountdownLabel(n);
         blipCountdown(n);
       },
     });
   };
 
-  /** Show countdown in the tab title while the tab is hidden. */
   const refreshTitle = () => {
     if (!document.hidden || !isActive() || !engine?.phaseEndInstant) {
       if (document.title !== defaultTitle) document.title = defaultTitle;
       return;
     }
 
-    const secondsLeft = Temporal.Now.instant().until(engine.phaseEndInstant).total("seconds");
+    const secondsLeft = Temporal.Now.instant()
+      .until(engine.phaseEndInstant)
+      .total("seconds");
     const label = phaseLabel.getText();
-    document.title = label ? `${label}: ${formatMSS(secondsLeft)}` : formatMSS(secondsLeft);
+    document.title = label
+      ? `${label}: ${formatMSS(secondsLeft)}`
+      : formatMSS(secondsLeft);
   };
 
   const setIdleDisplay = () => {
-    stopPrepareTimeline();
+    stopCountdownTimeline();
     setTime(currentConfig.workSeconds);
-    setRound(0);
+    setIdleRound();
     phaseLabel.set(LABEL.idle);
     setPlaybackLabel(LABEL.start);
     $playback.disabled = false;
@@ -265,7 +302,10 @@ export function enhancePlayer(root, options) {
    * @param {TimerConfig} [config]
    * @param {{ lightUp?: boolean }} [options]
    */
-  const applyConfig = (config = options.getConfig(), { lightUp = false } = {}) => {
+  const applyConfig = (
+    config = options.getConfig(),
+    { lightUp = false } = {},
+  ) => {
     clearCompleteTimer();
     currentConfig = config;
     engine?.reset();
@@ -283,34 +323,29 @@ export function enhancePlayer(root, options) {
   const bindEngine = (nextEngine) => {
     nextEngine.addEventListener("phase-change", (event) => {
       const detail = /** @type {CustomEvent<PhaseDetail>} */ (event).detail;
-      // Schedule audio before DOM/Motion work so render jank can't delay the attack.
       if (
         detail.status === STATUS.running &&
         detail.phase &&
         (detail.phase.type === "work" || detail.phase.type === "rest")
       ) {
-        if (detail.phase.type === "rest") {
-          playRestSound();
-        } else {
-          playWorkSound();
-        }
+        play(detail.phase.type === "rest" ? "rest" : "work");
       }
       lastBlippedSecond = null;
       renderPhase(detail, {
-        startPrepare: detail.status === STATUS.preparing,
+        startCountdown: detail.status === STATUS.preparing,
       });
       rememberPhaseType(detail.phase);
       maybeNotify(detail);
       emitRunningChange();
     });
 
-    nextEngine.addEventListener("tick", (event) => {
+    nextEngine.addEventListener("press", (event) => {
       const detail = /** @type {CustomEvent<{
         remainingSeconds: number,
         status: string,
         phase: Phase | null,
       }>} */ (event).detail;
-      if (detail.status !== STATUS.preparing) {
+      if (!isStartup(detail.status)) {
         setTime(detail.remainingSeconds);
         syncRingProgress(detail.phase, detail.remainingSeconds);
 
@@ -333,28 +368,30 @@ export function enhancePlayer(root, options) {
     });
 
     nextEngine.addEventListener("resume", (event) => {
+      play("resume");
       const detail = /** @type {CustomEvent<PhaseDetail>} */ (event).detail;
-      // Keep the ring where pause left it; the next tick continues from there.
       renderPhase(detail, { syncRing: false });
-      if (detail.status === STATUS.preparing) {
-        if (!prepareTimeline) startPrepareTimeline();
-        syncPrepareTimeline();
-        prepareTimeline?.play();
+      if (isStartup(detail.status)) {
+        if (!countdownTimeline) startCountdownTimeline();
+        syncCountdownTimeline();
+        countdownTimeline?.play();
       }
-      playResumeSound();
       emitRunningChange();
     });
 
     nextEngine.addEventListener("pause", () => {
-      prepareTimeline?.pause();
+      play("pause");
+      countdownTimeline?.pause();
       setPlaybackLabel(LABEL.resume);
       phaseLabel.set(LABEL.paused);
-      playPauseSound();
-      // Snap off the led-ahead target so the ring does not keep easing after freeze.
       if (nextEngine.currentPhase && nextEngine.remaining) {
-        syncRingProgress(nextEngine.currentPhase, nextEngine.remaining.total("seconds"), {
-          settle: true,
-        });
+        syncRingProgress(
+          nextEngine.currentPhase,
+          nextEngine.remaining.total("seconds"),
+          {
+            settle: true,
+          },
+        );
       }
       emitRunningChange();
       refreshTitle();
@@ -363,10 +400,10 @@ export function enhancePlayer(root, options) {
     nextEngine.addEventListener("complete", async () => {
       const wasFinalWork = lastPhaseType === "work";
       lastPhaseType = null;
-      stopPrepareTimeline();
+      play("completed");
+      stopCountdownTimeline();
       setTime(0);
       phaseLabel.set(LABEL.complete);
-      playCompletedSound();
       setRound(0);
       setPlaybackLabel(LABEL.start);
       $playback.disabled = true;
@@ -381,9 +418,11 @@ export function enhancePlayer(root, options) {
         applyConfig(undefined, { lightUp: true });
       }, 3000);
 
-      // Full rings + CSS pulse on [data-status="complete"] (no between-round clear).
       if (wasFinalWork) {
-        progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);
+        progressRing?.setTotals(
+          currentConfig.workSeconds,
+          currentConfig.restSeconds,
+        );
       }
     });
 
@@ -397,16 +436,25 @@ export function enhancePlayer(root, options) {
 
   /**
    * @param {PhaseDetail} detail
-   * @param {{ startPrepare?: boolean, syncRing?: boolean }} [opts]
+   * @param {{ startCountdown?: boolean, syncRing?: boolean }} [opts]
    */
-  const renderPhase = (detail, { startPrepare = false, syncRing = true } = {}) => {
+  const renderPhase = (
+    detail,
+    { startCountdown = false, syncRing = true } = {},
+  ) => {
     if (detail.status === STATUS.preparing) {
       phaseLabel.set(LABEL.prepare);
-      if (startPrepare) startPrepareTimeline();
+      setRound(0);
+      if (startCountdown) startCountdownTimeline();
+      if (syncRing) progressRing?.reset();
+      counterRing?.clear();
+    } else if (detail.status === STATUS.countdown) {
+      phaseLabel.set(LABEL.set, { animate: false });
+      setRound(0);
       if (syncRing) progressRing?.reset();
       counterRing?.clear();
     } else if (detail.phase) {
-      stopPrepareTimeline();
+      stopCountdownTimeline();
       const type = detail.phase.type;
       const tone = type === "work" || type === "rest" ? type : null;
       phaseLabel.set(LABEL[type] ?? type, { tone });
@@ -421,7 +469,7 @@ export function enhancePlayer(root, options) {
     }
 
     setPlaybackLabel(LABEL.pause);
-    $playback.disabled = detail.status === STATUS.preparing;
+    $playback.disabled = isStartup(detail.status);
     refreshTitle();
   };
 
@@ -436,6 +484,8 @@ export function enhancePlayer(root, options) {
       return;
     }
 
+    if (detail.status === STATUS.countdown) return;
+
     if (!detail.phase) return;
     const key = `${detail.phase.type}:${detail.round}`;
     if (lastNotifiedKey === key) return;
@@ -446,17 +496,12 @@ export function enhancePlayer(root, options) {
     });
   };
 
-  const startPlayback = async () => {
+  const startPlayback = () => {
     if (!engine || isActive()) return;
-
-    // Kick off resume in the click gesture, then wait so prepare isn't racing a cold context.
-    const audioReady = unlockAudio();
-    await notifications.ensurePermission();
-    await audioReady;
     engine.start();
   };
 
-  $playback.addEventListener("click", async () => {
+  $playback.addEventListener("click", () => {
     if (!engine || $playback.disabled) return;
 
     if (isActive()) {
@@ -464,16 +509,23 @@ export function enhancePlayer(root, options) {
       return;
     }
 
-    await startPlayback();
+    // Sound only in this turn. Engine/Motion/notifications run after so they
+    // can't stall AudioContext startup on the main thread.
+    if (engine.status === STATUS.idle) play("start");
+    setTimeout(() => {
+      startPlayback();
+      notifications.ensurePermission();
+    }, 0);
   });
 
   $reset.addEventListener("click", () => {
+    play("reset");
     applyConfig(undefined, { lightUp: true });
   });
 
   document.addEventListener("visibilitychange", () => {
     refreshTitle();
-    if (!document.hidden) syncPrepareTimeline();
+    if (!document.hidden) syncCountdownTimeline();
   });
 
   applyConfig(currentConfig, { lightUp: true });

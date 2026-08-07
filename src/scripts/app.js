@@ -10,7 +10,6 @@ function main() {
   if (!($appRoot instanceof HTMLElement) || !($player instanceof HTMLElement)) {
     return;
   }
-
   const fields = enhanceNumberFields($appRoot);
   const fieldByName = new Map(fields.map((field) => [field.name, field]));
 
@@ -47,7 +46,6 @@ function main() {
   $appRoot.addEventListener("number-field-change", () => {
     const config = readConfig();
     saveConfig(config);
-    // Fields are only editable while idle; soft-reset so Play uses the new values.
     player.softReset(config);
   });
 }

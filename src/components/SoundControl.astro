@@ -11,31 +11,93 @@ const { class: className, ...rest } = Astro.props;
   {...rest}
 >
   <span class="sr-only">Toggle sound</span>
-  <Icon name="sound" />
-  <Icon name="sound-off" />
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+    <g class="sound-on">
+      <rect width="256" height="256" fill="none"></rect>
+      <path d="M80,168H32a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80l72-56V224Z" fill="none"></path>
+      <line x1="80" y1="88" x2="80" y2="168"></line>
+      <path class="sound-path-1" d="M192,106.85a32,32,0,0,1,0,42.3"></path>
+      <path class="sound-path-2" d="M221.67,80a72,72,0,0,1,0,96"></path>
+    </g>
+    <path
+      class="sound-off"
+      d="m48 40 160 176M80 88v80m72-13.6V224l-72-56H32a8 8 0 0 1-8-8V96a8 8 0 0 1 8-8h48l6.82-5.3m31.66-24.63L152 32v62.94"
+    ></path>
+  </svg>
 </button>
 
 <script>
-  import { playClickSound } from "../scripts/sounds.js";
+  import { isMuted, play, setMuted } from "../scripts/sounds.js";
 
   const $sound = document.getElementById("sound-control");
 
+  $sound?.setAttribute("aria-pressed", isMuted() ? "true" : "false");
+
   $sound?.addEventListener("click", () => {
-    playClickSound();
-    const currentState = $sound.getAttribute("aria-pressed");
-    $sound.setAttribute("aria-pressed", String(currentState === "false"));
+    if (!isMuted()) {
+      play("mute");
+      setMuted(true);
+      $sound.setAttribute("aria-pressed", "true");
+    } else {
+      setMuted(false);
+      play("unmute");
+      $sound.setAttribute("aria-pressed", "false");
+    }
   });
 </script>
 
 <style>
-  [data-icon] {
-    --size: 0.8em;
+  svg {
+    --size: max(0.9em, 1.5rem);
     width: var(--size);
     height: var(--size);
+    transition: translate 200ms steps(2, jump-start);
+
+    :is(line, path) {
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 22;
+      fill: none;
+    }
   }
 
-  [aria-pressed="true"] [data-icon="sound"],
-  [aria-pressed="false"] [data-icon="sound-off"] {
-    display: none;
+  .sound-on,
+  .sound-off,
+  .sound-path-1,
+  .sound-path-2 {
+    transition: opacity 100ms steps(1, jump-start);
+  }
+
+  [aria-pressed="true"] {
+    svg {
+      translate: 0.1em;
+    }
+    :where(.sound-path-1, .sound-path-2) {
+      opacity: 0;
+    }
+    .sound-on {
+      opacity: 0;
+      transition-delay: 200ms;
+    }
+    .sound-off {
+      opacity: 1;
+      transition-delay: 200ms;
+    }
+    .sound-path-1 {
+      transition-delay: 100ms;
+    }
+  }
+
+  [aria-pressed="false"] {
+    .sound-on {
+      opacity: 1;
+    }
+    .sound-off {
+      opacity: 0;
+    }
+    .sound-path-2 {
+      transition-delay: 100ms;
+    }
   }
 </style>
