@@ -1,5 +1,14 @@
-const CACHE_NAME = "interval-timer-v1";
-const PRECACHE = ["/", "/manifest.webmanifest", "/favicon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
+const CACHE_NAME = "interval-timer-v2";
+const PRECACHE = [
+  "/",
+  "/manifest.webmanifest",
+  "/favicon.svg",
+  "/favicon.ico",
+  "/favicon-96x96.png",
+  "/apple-touch-icon.png",
+  "/web-app-manifest-192x192.png",
+  "/web-app-manifest-512x512.png",
+];
 
 /**
  * @param {Cache} cache
