@@ -511,7 +511,9 @@ export function enhancePlayer(root, options) {
 
     // Sound only in this turn. Engine/Motion/notifications run after so they
     // can't stall AudioContext startup on the main thread.
+    // Request wake lock in the same turn as the tap for reliability.
     if (engine.status === STATUS.idle) play("start");
+    void wakeLock.request();
     setTimeout(() => {
       startPlayback();
       notifications.ensurePermission();

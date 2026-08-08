@@ -55,6 +55,10 @@ export class WakeLockController {
       sentinel.addEventListener("release", () => {
         if (this._sentinel !== sentinel) return;
         this._sentinel = null;
+        // OS may release while the page stays visible; re-acquire if still needed.
+        if (this._enabled && document.visibilityState === "visible") {
+          this._acquire();
+        }
       });
     } catch {
       this._sentinel = null;
