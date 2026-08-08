@@ -3,7 +3,7 @@ let ctx = null;
 /** @type {GainNode | null} */
 let master = null;
 
-const MUTED_STORAGE_KEY = "interval-timer:muted";
+const MUTED_STORAGE_KEY = "wrrk:muted";
 
 /** @returns {boolean} */
 function loadMutedPreference() {

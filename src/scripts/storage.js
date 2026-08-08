@@ -2,7 +2,7 @@ import { createConfig, normalizeStoredConfig } from "./model.js";
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
 
-const STORAGE_KEY = "interval-timer:config";
+const STORAGE_KEY = "wrrk:config";
 
 /**
  * @returns {TimerConfig}

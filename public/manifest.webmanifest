@@ -1,7 +1,7 @@
 {
   "name": "WRRK Timer",
   "short_name": "WRRK",
-  "description": "A simple interval timer for workouts.",
+  "description": "A simple interval timer for workouts. Work, rest, repeat.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
