@@ -1,9 +1,4 @@
-@property --progress-work {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-@property --progress-rest {
+@property --phase-progress {
   syntax: "<number>";
   inherits: true;
   initial-value: 0;
