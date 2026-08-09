@@ -32,6 +32,19 @@ import { WakeLockController } from "./wake-lock.js";
  */
 
 /**
+ * @param {Phase | null | undefined} phase
+ * @returns {phase is Phase & { type: 'work' | 'rest' }}
+ */
+const isTimedPhase = (phase) =>
+  phase?.type === "work" || phase?.type === "rest";
+
+/**
+ * @param {Phase | null | undefined} phase
+ * @returns {'work' | 'rest' | null}
+ */
+const timedPhaseType = (phase) => (isTimedPhase(phase) ? phase.type : null);
+
+/**
  * Progressive enhancement for the timer player.
  * @param {HTMLElement} root
  * @param {{
@@ -107,9 +120,9 @@ export function enhancePlayer(root, options) {
     $time.setAttribute("aria-label", String(n));
   };
 
-  /** @param {number} current */
+  /** @param {number | null} current */
   const setRound = (current) => {
-    const pending = !current;
+    const pending = current == null;
     $roundLabel.hidden = pending;
     $roundCurrent.textContent = pending ? "––" : String(current);
   };
@@ -129,7 +142,15 @@ export function enhancePlayer(root, options) {
   let lastNotifiedKey = null;
   /** @type {number | null} */
   let lastBlippedSecond = null;
+  /** @type {'work' | 'rest' | null} */
+  let lastPhaseType = null;
   const defaultTitle = document.title;
+
+  const clearSessionFlags = () => {
+    lastNotifiedKey = null;
+    lastBlippedSecond = null;
+    lastPhaseType = null;
+  };
 
   /** @param {number} sec */
   const blipCountdown = (sec) => {
@@ -171,7 +192,7 @@ export function enhancePlayer(root, options) {
     { settle = false } = {},
   ) => {
     if (!progressRing) return;
-    if (!phase || (phase.type !== "work" && phase.type !== "rest")) {
+    if (!isTimedPhase(phase)) {
       progressRing.reset();
       return;
     }
@@ -183,17 +204,6 @@ export function enhancePlayer(root, options) {
       },
       { settle },
     );
-  };
-
-  /** @type {'work' | 'rest' | null} */
-  let lastPhaseType = null;
-
-  /**
-   * @param {Phase | null | undefined} phase
-   */
-  const rememberPhaseType = (phase) => {
-    lastPhaseType =
-      phase?.type === "work" || phase?.type === "rest" ? phase.type : null;
   };
 
   const syncCounterIdle = () => {
@@ -210,8 +220,8 @@ export function enhancePlayer(root, options) {
   const syncRootAttrs = () => {
     attrsRoot.dataset.status = engine?.status ?? STATUS.idle;
 
-    const phaseType = engine?.currentPhase?.type;
-    if (phaseType === "work" || phaseType === "rest") {
+    const phaseType = timedPhaseType(engine?.currentPhase);
+    if (phaseType) {
       attrsRoot.dataset.phase = phaseType;
     } else {
       delete attrsRoot.dataset.phase;
@@ -226,7 +236,7 @@ export function enhancePlayer(root, options) {
     }
   };
 
-  const emitRunningChange = () => {
+  const syncSessionState = () => {
     syncRootAttrs();
     syncWakeLock();
     const idle = (engine?.status ?? STATUS.idle) === STATUS.idle;
@@ -238,12 +248,17 @@ export function enhancePlayer(root, options) {
     cancelDigitDance();
   };
 
+  const secondsUntilPhaseEnd = () => {
+    if (!engine?.phaseEndInstant) return 0;
+    return Temporal.Now.instant()
+      .until(engine.phaseEndInstant)
+      .total("seconds");
+  };
+
   const syncCountdownTimeline = () => {
     if (!countdownTimeline || !engine?.phaseEndInstant) return;
     if (!isStartup()) return;
-    const left = Temporal.Now.instant()
-      .until(engine.phaseEndInstant)
-      .total("seconds");
+    const left = secondsUntilPhaseEnd();
     if (engine.status === STATUS.preparing) {
       countdownTimeline.time = Math.max(0, PREPARE_SECONDS - left);
     } else if (engine.status === STATUS.countdown) {
@@ -274,13 +289,9 @@ export function enhancePlayer(root, options) {
       return;
     }
 
-    const secondsLeft = Temporal.Now.instant()
-      .until(engine.phaseEndInstant)
-      .total("seconds");
     const label = phaseLabel.getText();
-    document.title = label
-      ? `${label}: ${formatMSS(secondsLeft)}`
-      : formatMSS(secondsLeft);
+    const clock = formatMSS(secondsUntilPhaseEnd());
+    document.title = label ? `${label}: ${clock}` : clock;
   };
 
   const setIdleDisplay = () => {
@@ -293,7 +304,7 @@ export function enhancePlayer(root, options) {
     $reset.disabled = false;
     syncRingTotals();
     syncCounterIdle();
-    emitRunningChange();
+    syncSessionState();
   };
 
   const lightUpDigits = () => playDigitDance($digits);
@@ -310,62 +321,61 @@ export function enhancePlayer(root, options) {
     currentConfig = config;
     engine?.reset();
     engine = new TimerEngine(config);
-    lastNotifiedKey = null;
-    lastBlippedSecond = null;
+    clearSessionFlags();
     bindEngine(engine);
     setIdleDisplay();
     if (lightUp) lightUpDigits();
   };
 
   /**
+   * @param {CustomEvent<PhaseDetail>} event
+   */
+  const onPhaseChange = (event) => {
+    const detail = event.detail;
+    if (detail.status === STATUS.running && isTimedPhase(detail.phase)) {
+      play(detail.phase.type);
+    }
+    lastBlippedSecond = null;
+    renderPhase(detail, {
+      startCountdown: detail.status === STATUS.preparing,
+    });
+    lastPhaseType = timedPhaseType(detail.phase);
+    maybeNotify(detail);
+    syncSessionState();
+  };
+
+  /**
+   * @param {CustomEvent<{
+   *   remainingSeconds: number,
+   *   status: string,
+   *   phase: Phase | null,
+   * }>} event
+   */
+  const onPress = (event) => {
+    const detail = event.detail;
+    if (!isStartup(detail.status)) {
+      setTime(detail.remainingSeconds);
+      syncRingProgress(detail.phase, detail.remainingSeconds);
+
+      if (detail.status === STATUS.running && isTimedPhase(detail.phase)) {
+        const sec = Math.ceil(detail.remainingSeconds);
+        if (sec !== lastBlippedSecond) {
+          lastBlippedSecond = sec;
+          blipCountdown(sec);
+        }
+      }
+    }
+
+    refreshTitle();
+  };
+
+  /**
    * @param {TimerEngine} nextEngine
    */
   const bindEngine = (nextEngine) => {
-    nextEngine.addEventListener("phase-change", (event) => {
-      const detail = /** @type {CustomEvent<PhaseDetail>} */ (event).detail;
-      if (
-        detail.status === STATUS.running &&
-        detail.phase &&
-        (detail.phase.type === "work" || detail.phase.type === "rest")
-      ) {
-        play(detail.phase.type === "rest" ? "rest" : "work");
-      }
-      lastBlippedSecond = null;
-      renderPhase(detail, {
-        startCountdown: detail.status === STATUS.preparing,
-      });
-      rememberPhaseType(detail.phase);
-      maybeNotify(detail);
-      emitRunningChange();
-    });
+    nextEngine.addEventListener("phase-change", onPhaseChange);
 
-    nextEngine.addEventListener("press", (event) => {
-      const detail = /** @type {CustomEvent<{
-        remainingSeconds: number,
-        status: string,
-        phase: Phase | null,
-      }>} */ (event).detail;
-      if (!isStartup(detail.status)) {
-        setTime(detail.remainingSeconds);
-        syncRingProgress(detail.phase, detail.remainingSeconds);
-
-        const phase = detail.phase;
-
-        if (
-          detail.status === STATUS.running &&
-          phase &&
-          (phase.type === "work" || phase.type === "rest")
-        ) {
-          const sec = Math.ceil(detail.remainingSeconds);
-          if (sec !== lastBlippedSecond && sec >= 1 && sec <= 3) {
-            lastBlippedSecond = sec;
-            blipCountdown(sec);
-          }
-        }
-      }
-
-      refreshTitle();
-    });
+    nextEngine.addEventListener("press", onPress);
 
     nextEngine.addEventListener("resume", (event) => {
       play("resume");
@@ -376,7 +386,7 @@ export function enhancePlayer(root, options) {
         syncCountdownTimeline();
         countdownTimeline?.play();
       }
-      emitRunningChange();
+      syncSessionState();
     });
 
     nextEngine.addEventListener("pause", () => {
@@ -393,7 +403,7 @@ export function enhancePlayer(root, options) {
           },
         );
       }
-      emitRunningChange();
+      syncSessionState();
       refreshTitle();
     });
 
@@ -404,12 +414,12 @@ export function enhancePlayer(root, options) {
       stopCountdownTimeline();
       setTime(0);
       phaseLabel.set(LABEL.complete);
-      setRound(0);
+      setRound(null);
       setPlaybackLabel(LABEL.start);
       $playback.disabled = true;
       counterRing?.showAll(currentConfig.rounds);
       notifications.notifyPhase("complete");
-      emitRunningChange();
+      syncSessionState();
       refreshTitle();
 
       clearCompleteTimer();
@@ -427,9 +437,7 @@ export function enhancePlayer(root, options) {
     });
 
     nextEngine.addEventListener("reset", () => {
-      lastNotifiedKey = null;
-      lastBlippedSecond = null;
-      lastPhaseType = null;
+      clearSessionFlags();
       refreshTitle();
     });
   };
@@ -442,21 +450,20 @@ export function enhancePlayer(root, options) {
     detail,
     { startCountdown = false, syncRing = true } = {},
   ) => {
-    if (detail.status === STATUS.preparing) {
-      phaseLabel.set(LABEL.prepare);
-      setRound(0);
-      if (startCountdown) startCountdownTimeline();
-      if (syncRing) progressRing?.reset();
-      counterRing?.clear();
-    } else if (detail.status === STATUS.countdown) {
-      phaseLabel.set(LABEL.set, { animate: false });
-      setRound(0);
+    if (isStartup(detail.status)) {
+      if (detail.status === STATUS.preparing) {
+        phaseLabel.set(LABEL.prepare);
+        if (startCountdown) startCountdownTimeline();
+      } else {
+        phaseLabel.set(LABEL.set, { animate: false });
+      }
+      setRound(null);
       if (syncRing) progressRing?.reset();
       counterRing?.clear();
     } else if (detail.phase) {
       stopCountdownTimeline();
       const type = detail.phase.type;
-      const tone = type === "work" || type === "rest" ? type : null;
+      const tone = timedPhaseType(detail.phase);
       phaseLabel.set(LABEL[type] ?? type, { tone });
       setRound(detail.round ?? 1);
       counterRing?.setActive(detail.round ?? 1, detail.totalRounds);

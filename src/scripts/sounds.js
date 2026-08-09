@@ -53,16 +53,11 @@ const MELODIC_SHIMMER = {
 /**
  * @typedef {{
  *   kind: "tone",
- *   note?: string,
- *   frequency?: number,
- *   waveform?: OscillatorType,
+ *   note: string,
  *   offset?: number,
  *   attack: number,
  *   decay: number,
  *   peak: number,
- *   detune?: number,
- *   glideTo?: number | string,
- *   glideTime?: number,
  * }} ToneLayer
  */
 
@@ -72,8 +67,6 @@ const MELODIC_SHIMMER = {
  *   filterType: BiquadFilterType,
  *   filterFrequency: number,
  *   filterQ?: number,
- *   filterGlideTo?: number,
- *   filterGlideTime?: number,
  *   offset?: number,
  *   attack: number,
  *   decay: number,
@@ -285,7 +278,6 @@ const RECIPES = {
     layers: [
       {
         kind: "tone",
-        waveform: "sine",
         note: "C#5",
         attack: 0.004,
         decay: 0.09,
@@ -293,7 +285,6 @@ const RECIPES = {
       },
       {
         kind: "tone",
-        waveform: "sine",
         note: "G#5",
         offset: 0.06,
         attack: 0.004,
@@ -302,7 +293,6 @@ const RECIPES = {
       },
       {
         kind: "tone",
-        waveform: "sine",
         note: "C#6",
         offset: 0.12,
         attack: 0.004,
@@ -311,30 +301,6 @@ const RECIPES = {
       },
     ],
     shimmer: { delay: 0.2, feedback: 0.1, wet: 0.2, lowpass: 800 },
-  },
-  toggle: {
-    masterGain: 0.4,
-    layers: [
-      {
-        kind: "noise",
-        filterType: "bandpass",
-        filterFrequency: 4000,
-        filterQ: 2,
-        attack: 0.001,
-        decay: 0.01,
-        peak: 0.08,
-      },
-      {
-        kind: "noise",
-        filterType: "bandpass",
-        filterFrequency: 2000,
-        filterQ: 1.6,
-        offset: 0.024,
-        attack: 0.001,
-        decay: 0.02,
-        peak: 0.1,
-      },
-    ],
   },
   work: {
     masterGain: 0.55,
@@ -398,16 +364,6 @@ function noteToHz(note) {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-/**
- * @param {{ frequency?: number, note?: string }} layer
- * @returns {number | null}
- */
-function resolveFrequency(layer) {
-  if (typeof layer.frequency === "number") return layer.frequency;
-  if (typeof layer.note === "string") return noteToHz(layer.note);
-  return null;
-}
-
 function setupAudio() {
   if (audioCtx && output) return true;
 
@@ -438,13 +394,13 @@ async function resumeAudio() {
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && audioCtx) void resumeAudio();
+  if (document.visibilityState === "visible" && audioCtx) resumeAudio();
 });
 
 document.addEventListener(
   "pointerdown",
   () => {
-    if (audioCtx && audioCtx.state !== "running") void resumeAudio();
+    if (audioCtx && audioCtx.state !== "running") resumeAudio();
   },
   { passive: true },
 );
@@ -472,21 +428,12 @@ function applyEnvelope(audio, source, destination, layer, startTime) {
  * @param {number} startTime
  */
 function renderTone(audio, destination, layer, startTime) {
-  const freq = resolveFrequency(layer);
+  const freq = noteToHz(layer.note);
   if (freq == null) return;
 
   const oscillator = audio.createOscillator();
-  oscillator.type = layer.waveform ?? "sine";
+  oscillator.type = "sine";
   oscillator.frequency.setValueAtTime(freq, startTime);
-  if (layer.detune != null) oscillator.detune.value = layer.detune;
-
-  if (layer.glideTo !== undefined) {
-    const glideTo = typeof layer.glideTo === "string" ? noteToHz(layer.glideTo) : layer.glideTo;
-    if (glideTo != null) {
-      const glideTime = layer.glideTime ?? layer.attack + layer.decay;
-      oscillator.frequency.exponentialRampToValueAtTime(glideTo, startTime + glideTime);
-    }
-  }
 
   applyEnvelope(audio, oscillator, destination, layer, startTime);
 
