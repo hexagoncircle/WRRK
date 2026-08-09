@@ -1,26 +1,18 @@
 /** @type {AudioContext | null} */
-let ctx = null;
+let audioCtx = null;
 /** @type {GainNode | null} */
-let master = null;
+let output = null;
 
 const MUTED_STORAGE_KEY = "wrrk:muted";
 
 /** @returns {boolean} */
 function loadMutedPreference() {
-  try {
-    return localStorage.getItem(MUTED_STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
+  return localStorage.getItem(MUTED_STORAGE_KEY) === "true";
 }
 
 /** @param {boolean} value */
 function saveMutedPreference(value) {
-  try {
-    localStorage.setItem(MUTED_STORAGE_KEY, String(value));
-  } catch {
-    // Best-effort; quota / private mode may reject writes.
-  }
+  localStorage.setItem(MUTED_STORAGE_KEY, String(value));
 }
 
 let muted = loadMutedPreference();
@@ -417,27 +409,45 @@ function resolveFrequency(layer) {
 }
 
 function setupAudio() {
-  if (ctx && master) return true;
+  if (audioCtx && output) return true;
 
-  // iOS 17+: route Web Audio through the playback session so the Silent
-  // switch does not mute timer sounds.
+  // Enable sound even if phone's silent switch is on.
   if (navigator.audioSession) {
     try {
       navigator.audioSession.type = "playback";
-    } catch {
-      // Unsupported / rejected — leave default ambient
-    }
+    } catch {}
   }
 
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return false;
+  if (typeof AudioContext === "undefined") return false;
 
-  ctx = new AudioCtx();
-  master = ctx.createGain();
-  master.gain.value = OUTPUT_GAIN;
-  master.connect(ctx.destination);
+  audioCtx = new AudioContext();
+  output = audioCtx.createGain();
+  output.gain.value = OUTPUT_GAIN;
+  output.connect(audioCtx.destination);
   return true;
 }
+
+/** @returns {Promise<boolean>} */
+async function resumeAudio() {
+  if (!setupAudio() || !audioCtx) return false;
+  if (audioCtx.state === "running") return true;
+  try {
+    await audioCtx.resume();
+  } catch {}
+  return audioCtx.state === "running";
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && audioCtx) void resumeAudio();
+});
+
+document.addEventListener(
+  "pointerdown",
+  () => {
+    if (audioCtx && audioCtx.state !== "running") void resumeAudio();
+  },
+  { passive: true },
+);
 
 /**
  * Applies a standard Attack/Decay envelope to an audio source.
@@ -623,12 +633,9 @@ export function play(name, opts) {
   if (muted) return;
   const recipe = RECIPES[name];
   if (!recipe) return;
-  if (!setupAudio() || !ctx || !master) return;
 
-  if (ctx.state === "suspended") {
-    ctx.resume();
-  }
-
-  const startTime = ctx.currentTime + LOOKAHEAD;
-  renderRecipe(ctx, master, recipe, startTime, opts);
+  resumeAudio().then((ok) => {
+    if (!ok || !audioCtx || !output) return;
+    renderRecipe(audioCtx, output, recipe, audioCtx.currentTime + LOOKAHEAD, opts);
+  });
 }
