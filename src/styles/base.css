@@ -3,21 +3,6 @@
   inherits: true;
   initial-value: 0;
 }
-@property --ring-gap {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 4;
-}
-@property --progress-work-percent {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-@property --progress-rest-percent {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
 @property --color-digit {
   syntax: "<color>";
   inherits: true;
