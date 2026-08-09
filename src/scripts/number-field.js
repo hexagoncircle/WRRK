@@ -1,6 +1,5 @@
-import { formatMSS } from "./format.js";
 import { play } from "./sounds.js";
-import { clamp } from "./utils.js";
+import { clamp, formatMSS } from "./utils.js";
 
 /** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
 function secondsToMss(totalSeconds) {

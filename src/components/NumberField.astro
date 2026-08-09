@@ -1,6 +1,6 @@
 ---
-import { formatMSS } from "../scripts/format.js";
 import { Icon } from "astro-icon/components";
+import { clamp, formatMSS } from "../scripts/utils.js";
 
 interface Props {
   label: string;
@@ -14,7 +14,7 @@ interface Props {
 }
 
 const { label, name, value, min, max, step, duration = false } = Astro.props;
-const clamped = Math.min(max, Math.max(min, value));
+const clamped = clamp(value, min, max);
 const inputValue = duration ? formatMSS(clamped) : String(clamped);
 const inputId = `number-field-${name}`;
 const roleDescription = duration ? "Duration" : "Number field";

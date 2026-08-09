@@ -33,16 +33,6 @@ export const DEFAULT_CONFIG = Object.freeze({
 });
 
 /**
- * @param {unknown} value
- * @returns {number}
- */
-function toNonNegativeInt(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.trunc(n));
-}
-
-/**
  * @param {{
  *   workSeconds?: number,
  *   restSeconds?: number,
@@ -52,17 +42,9 @@ function toNonNegativeInt(value) {
  */
 export function createConfig(input = {}) {
   return {
-    workSeconds: clamp(
-      toNonNegativeInt(input.workSeconds ?? DEFAULT_CONFIG.workSeconds),
-      DURATION_MIN,
-      DURATION_MAX,
-    ),
-    restSeconds: clamp(
-      toNonNegativeInt(input.restSeconds ?? DEFAULT_CONFIG.restSeconds),
-      DURATION_MIN,
-      DURATION_MAX,
-    ),
-    rounds: clamp(toNonNegativeInt(input.rounds ?? DEFAULT_CONFIG.rounds), 1, ROUNDS_MAX),
+    workSeconds: clamp(input.workSeconds ?? DEFAULT_CONFIG.workSeconds, DURATION_MIN, DURATION_MAX),
+    restSeconds: clamp(input.restSeconds ?? DEFAULT_CONFIG.restSeconds, DURATION_MIN, DURATION_MAX),
+    rounds: clamp(input.rounds ?? DEFAULT_CONFIG.rounds, 1, ROUNDS_MAX),
   };
 }
 

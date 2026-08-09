@@ -1,10 +1,9 @@
-import { readRingGap } from "./utils.js";
+import { clamp } from "./utils.js";
 
 const ANNOUNCE_MS = 3000;
 
 /**
- * Segmented rounds counter ring driven by CSS custom properties.
- *
+ * Segmented rounds counter driven by CSS custom properties.
  * @param {HTMLElement} root Element with .counter-ring
  */
 export function createCounterRing(root) {
@@ -13,20 +12,16 @@ export function createCounterRing(root) {
   const $current = root.querySelector(".current");
   const $total = root.querySelector(".total");
 
-  let count = Math.max(1, Number(root.style.getPropertyValue("--count")) || 1);
-  /** @type {number} Last round that triggered the start announce (0 = none) */
+  let count = clamp(root.style.getPropertyValue("--count"), 1, Number.MAX_SAFE_INTEGER);
   let announcedRound = 0;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let announceTimer = null;
 
-  /**
-   * @param {number} n
-   */
   function geometry(n) {
-    const gap = readRingGap(root);
+    const gap =
+      Number.parseFloat(getComputedStyle(root).getPropertyValue("--ring-gap")) || 0;
     const segment = 100 / n;
-    const dash = Math.max(segment - gap, 0);
-    return { gap, segment, dash };
+    return { gap, segment, dash: Math.max(segment - gap, 0) };
   }
 
   /**
@@ -46,9 +41,7 @@ export function createCounterRing(root) {
     el.style.opacity = visible ? "1" : "0";
   }
 
-  /**
-   * @param {number} lit How many segments from the start are solid (0..count)
-   */
+  /** @param {number} lit How many segments from the start are solid (0..count) */
   function paintFill(lit) {
     const { segment, dash, gap } = geometry(count);
 
@@ -58,7 +51,7 @@ export function createCounterRing(root) {
       return;
     }
 
-    // Prior rounds stay solid; the current round lives on .counter-active so it can pulse.
+    // Completed rounds on .counter-fill; current round on .counter-active (pulses).
     const completed = lit - 1;
     if (completed <= 0) {
       paintCircle($fill, "0 100", false);
@@ -71,7 +64,6 @@ export function createCounterRing(root) {
       paintCircle($fill, pattern.join(" "), true);
     }
 
-    // Position with dashoffset — a leading "0 ${lead}" dash becomes a round-cap dot.
     const index = lit - 1;
     paintCircle($active, `${dash} ${100 - dash}`, true, -gap / 2 - index * segment);
   }
@@ -84,13 +76,9 @@ export function createCounterRing(root) {
     delete root.dataset.announce;
   }
 
-  /**
-   * Show the round number alone, larger, with a 3s pulse.
-   * @param {number} round
-   */
+  /** Show the round number alone for ANNOUNCE_MS. */
   function announce(round) {
     if (announcedRound === round) return;
-
     announcedRound = round;
     stopAnnounce();
     root.dataset.announce = "";
@@ -100,25 +88,19 @@ export function createCounterRing(root) {
     }, ANNOUNCE_MS);
   }
 
-  /**
-   * @param {number} next
-   */
   function setCount(next) {
-    count = Math.max(1, Math.trunc(Number(next) || 1));
+    count = clamp(next, 1, Number.MAX_SAFE_INTEGER);
     root.style.setProperty("--count", String(count));
     if ($total) $total.textContent = String(count);
   }
 
-  /**
-   * @param {number} [current=1] 1-based label — pass total on complete so N/N persists
-   */
+  /** @param {number} [current=1] 1-based label — pass total on complete so N/N persists */
   function showAll(current = 1) {
     announcedRound = 0;
     stopAnnounce();
     paintFill(count);
     if ($current) {
-      const n = Math.max(1, Math.min(count, Math.trunc(Number(current) || 1)));
-      $current.textContent = String(n);
+      $current.textContent = String(clamp(current, 1, count));
     }
   }
 
@@ -129,15 +111,10 @@ export function createCounterRing(root) {
     if ($current) $current.textContent = "1";
   }
 
-  /**
-   * @param {number} round 1-based current round
-   * @param {number} total total rounds
-   */
+  /** @param {number} round 1-based current round */
   function setActive(round, total) {
     if (total != null && total !== count) setCount(total);
-
-    const current = Math.max(1, Math.min(count, Math.trunc(Number(round) || 1)));
-
+    const current = clamp(round, 1, count);
     paintFill(current);
     if ($current) $current.textContent = String(current);
     announce(current);

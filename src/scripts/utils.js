@@ -1,60 +1,43 @@
 /**
- * PathLength units (0–100) for seams between ring segments / phases.
- * Keep in sync with `--ring-gap` in `src/styles/base.css`.
- */
-export const RING_GAP = 5;
-
-/**
- * Read `--ring-gap` from computed styles (falls back to {@link RING_GAP}).
- * @param {Element} el
- */
-export function readRingGap(el) {
-  const n = Number.parseFloat(getComputedStyle(el).getPropertyValue("--ring-gap"));
-  return Number.isFinite(n) ? n : RING_GAP;
-}
-
-/**
- * @param {number} value
+ * Clamp to an inclusive integer range.
+ * Coerces with Number(); non-finite values become `lo`.
+ * @param {unknown} value
  * @param {number} lo
  * @param {number} hi
  * @returns {number}
  */
 export function clamp(value, lo, hi) {
-  if (!Number.isFinite(value)) return lo;
-  return Math.min(hi, Math.max(lo, Math.trunc(value)));
+  const n = Number(value);
+  if (!Number.isFinite(n)) return lo;
+  return Math.min(hi, Math.max(lo, Math.trunc(n)));
 }
 
 /**
- * Linear remap from one numeric range into another.
- * @param {number} number
- * @param {number} currentScaleMin
- * @param {number} currentScaleMax
- * @param {number} [newScaleMin=0]
- * @param {number} [newScaleMax=1]
+ * Ceil to a non-negative whole-second count for display.
+ * @param {number} totalSeconds
+ * @returns {[number, number]} `[minutes, seconds]`
  */
-export const normalize = (
-  number,
-  currentScaleMin,
-  currentScaleMax,
-  newScaleMin = 0,
-  newScaleMax = 1,
-) => {
-  const t = (number - currentScaleMin) / (currentScaleMax - currentScaleMin);
-  return (newScaleMax - newScaleMin) * t + newScaleMin;
-};
+function splitDuration(totalSeconds) {
+  const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.ceil(totalSeconds)) : 0;
+  return [Math.floor(safe / 60), safe % 60];
+}
 
 /**
- * Work/rest arc lengths as percents of the full ring (sum to 100 when both > 0).
- * @param {number} workSeconds
- * @param {number} restSeconds
- * @returns {{ workPercent: number, restPercent: number }}
+ * Format a non-negative duration as M:SS (unpadded minutes).
+ * @param {number} totalSeconds
+ * @returns {string}
  */
-export function phasePercents(workSeconds, restSeconds) {
-  const work = Math.max(0, Number(workSeconds) || 0);
-  const rest = Math.max(0, Number(restSeconds) || 0);
-  const total = work + rest;
-  return {
-    workPercent: total > 0 ? (work / total) * 100 : 0,
-    restPercent: total > 0 ? (rest / total) * 100 : 0,
-  };
+export function formatMSS(totalSeconds) {
+  const [minutes, seconds] = splitDuration(totalSeconds);
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/**
+ * ISO 8601 duration attribute for a non-negative whole-second count (PT#M#S).
+ * @param {number} totalSeconds
+ * @returns {string}
+ */
+export function formatDurationAttr(totalSeconds) {
+  const [minutes, seconds] = splitDuration(totalSeconds);
+  return `PT${minutes}M${seconds}S`;
 }

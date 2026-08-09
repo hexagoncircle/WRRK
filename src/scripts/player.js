@@ -5,7 +5,7 @@ import {
   playDigitDance,
 } from "./digit-dance.js";
 import { STATUS, TimerEngine } from "./engine.js";
-import { formatDurationAttr, formatMSS } from "./format.js";
+import { formatDurationAttr, formatMSS } from "./utils.js";
 import { LABEL } from "./labels.js";
 import {
   COUNTDOWN_SECONDS,

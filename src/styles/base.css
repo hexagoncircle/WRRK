@@ -8,11 +8,10 @@
   inherits: true;
   initial-value: 0;
 }
-/* Keep initial-value / --ring-gap in sync with RING_GAP in src/scripts/utils.js */
 @property --ring-gap {
   syntax: "<number>";
   inherits: true;
-  initial-value: 5;
+  initial-value: 4;
 }
 @property --progress-work-percent {
   syntax: "<number>";
