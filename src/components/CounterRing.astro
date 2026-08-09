@@ -10,12 +10,61 @@ const { count, class: className, ...rest } = Astro.props;
 ---
 
 <Ring class:list={["counter-ring", className]} style={`--count: ${count}`} {...rest}>
-  <circle class="counter-track" cx="50" cy="50" r="45" pathLength="100"></circle>
-  <circle class="counter-fill" cx="50" cy="50" r="45" pathLength="100"></circle>
-  <circle class="counter-active" cx="50" cy="50" r="45" pathLength="100"></circle>
-  <div class="counter-text" slot="center">
+  <circle class="track" cx="50" cy="50" r="45" pathLength="100"></circle>
+  <circle class="fill" cx="50" cy="50" r="45" pathLength="100"></circle>
+  <circle class="active" cx="50" cy="50" r="45" pathLength="100"></circle>
+  <div class="text" slot="center">
     <span class="current">1</span>
     <span class="sep">/</span>
     <span class="total">{count}</span>
   </div>
 </Ring>
+
+<style>
+  .track,
+  .fill {
+    stroke-dashoffset: calc(var(--segment-gap, var(--ring-gap)) / -2);
+  }
+
+  .track {
+    stroke: var(--color-fg-subtle);
+    stroke-dasharray: var(--segment-dash, calc(100 / var(--count) - var(--ring-gap)))
+      var(--segment-gap, var(--ring-gap));
+  }
+
+  .fill {
+    stroke: var(--color-fg);
+    stroke-dasharray: var(
+      --fill-dasharray,
+      var(--segment-dash, calc(100 / var(--count) - var(--ring-gap)))
+        var(--segment-gap, var(--ring-gap))
+    );
+  }
+
+  .active {
+    stroke: var(--color-digit, var(--color-fg));
+    stroke-dasharray: var(--fill-dasharray, 0 100);
+    stroke-dashoffset: var(--fill-dashoffset, calc(var(--segment-gap, var(--ring-gap)) / -2));
+  }
+
+  .text {
+    display: flex;
+    font-family: var(--font-display);
+    line-height: 1;
+    color: var(--color-digit, var(--color-fg));
+  }
+
+  .counter-ring[data-announce] {
+    animation: pulse 1s steps(1, jump-start) 3;
+
+    .text {
+      font-size: 1.75em;
+      translate: 0 -0.015em;
+    }
+
+    .sep,
+    .total {
+      display: none;
+    }
+  }
+</style>

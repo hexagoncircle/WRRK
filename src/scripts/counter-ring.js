@@ -1,14 +1,17 @@
 import { clamp } from "./utils.js";
 
 const ANNOUNCE_MS = 3000;
+const PATH_LENGTH = 100;
+const GAP_SHARE = 0.6;
+const ROUND_MAX_COUNT = 30;
 
 /**
  * Segmented rounds counter driven by CSS custom properties.
  * @param {HTMLElement} root Element with .counter-ring
  */
 export function createCounterRing(root) {
-  const $fill = root.querySelector(".counter-fill");
-  const $active = root.querySelector(".counter-active");
+  const $fill = root.querySelector(".fill");
+  const $active = root.querySelector(".active");
   const $current = root.querySelector(".current");
   const $total = root.querySelector(".total");
 
@@ -18,10 +21,26 @@ export function createCounterRing(root) {
   let announceTimer = null;
 
   function geometry(n) {
-    const gap =
+    const baseGap =
       Number.parseFloat(getComputedStyle(root).getPropertyValue("--ring-gap")) || 0;
-    const segment = 100 / n;
-    return { gap, segment, dash: Math.max(segment - gap, 0) };
+    const segment = PATH_LENGTH / n;
+    const linecap = n <= ROUND_MAX_COUNT ? "round" : "butt";
+
+    if (linecap === "round") {
+      const gap = Math.min(baseGap, segment);
+      return { gap, segment, dash: segment - gap, linecap };
+    }
+
+    const gap = Math.min(baseGap, segment * GAP_SHARE);
+    return { gap, segment, dash: Math.max(segment - gap, 0), linecap };
+  }
+
+  function applyGeometry() {
+    const g = geometry(count);
+    root.style.setProperty("--segment-gap", String(g.gap));
+    root.style.setProperty("--segment-dash", String(g.dash));
+    root.style.setProperty("--segment-linecap", g.linecap);
+    return g;
   }
 
   /**
@@ -43,7 +62,7 @@ export function createCounterRing(root) {
 
   /** @param {number} lit How many segments from the start are solid (0..count) */
   function paintFill(lit) {
-    const { segment, dash, gap } = geometry(count);
+    const { segment, dash, gap } = applyGeometry();
 
     if (lit <= 0) {
       paintCircle($fill, "0 100", false);
@@ -51,7 +70,6 @@ export function createCounterRing(root) {
       return;
     }
 
-    // Completed rounds on .counter-fill; current round on .counter-active (pulses).
     const completed = lit - 1;
     if (completed <= 0) {
       paintCircle($fill, "0 100", false);
@@ -76,7 +94,6 @@ export function createCounterRing(root) {
     delete root.dataset.announce;
   }
 
-  /** Show the round number alone for ANNOUNCE_MS. */
   function announce(round) {
     if (announcedRound === round) return;
     announcedRound = round;
@@ -92,6 +109,7 @@ export function createCounterRing(root) {
     count = clamp(next, 1, Number.MAX_SAFE_INTEGER);
     root.style.setProperty("--count", String(count));
     if ($total) $total.textContent = String(count);
+    applyGeometry();
   }
 
   /** @param {number} [current=1] 1-based label — pass total on complete so N/N persists */

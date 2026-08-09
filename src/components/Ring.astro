@@ -42,6 +42,6 @@ const { class: className, ...rest } = Astro.props;
   .ring :global(circle) {
     fill: none;
     stroke-width: var(--ring-stroke);
-    stroke-linecap: round;
+    stroke-linecap: var(--segment-linecap, round);
   }
 </style>
