@@ -12,7 +12,6 @@ import {
   PREPARE_SECONDS,
   totalWorkoutSeconds,
 } from "./model.js";
-import { NotificationController } from "./notifications.js";
 import { createCounterRing } from "./counter-ring.js";
 import { createPhaseLabel } from "./phase-label.js";
 import { createProgressRing } from "./progress-ring.js";
@@ -137,9 +136,6 @@ export function enhancePlayer(root, options) {
   /** @type {TimerConfig} */
   let currentConfig = options.getConfig();
   const wakeLock = new WakeLockController();
-  const notifications = new NotificationController();
-  /** @type {string | null} */
-  let lastNotifiedKey = null;
   /** @type {number | null} */
   let lastBlippedSecond = null;
   /** @type {'work' | 'rest' | null} */
@@ -147,7 +143,6 @@ export function enhancePlayer(root, options) {
   const defaultTitle = document.title;
 
   const clearSessionFlags = () => {
-    lastNotifiedKey = null;
     lastBlippedSecond = null;
     lastPhaseType = null;
   };
@@ -340,7 +335,6 @@ export function enhancePlayer(root, options) {
       startCountdown: detail.status === STATUS.preparing,
     });
     lastPhaseType = timedPhaseType(detail.phase);
-    maybeNotify(detail);
     syncSessionState();
   };
 
@@ -418,7 +412,6 @@ export function enhancePlayer(root, options) {
       setPlaybackLabel(LABEL.start);
       $playback.disabled = true;
       counterRing?.showAll(currentConfig.rounds);
-      notifications.notifyPhase("complete");
       syncSessionState();
       refreshTitle();
 
@@ -480,29 +473,6 @@ export function enhancePlayer(root, options) {
     refreshTitle();
   };
 
-  /**
-   * @param {PhaseDetail} detail
-   */
-  const maybeNotify = (detail) => {
-    if (detail.status === STATUS.preparing) {
-      if (lastNotifiedKey === "prepare") return;
-      lastNotifiedKey = "prepare";
-      notifications.notifyPhase("prepare");
-      return;
-    }
-
-    if (detail.status === STATUS.countdown) return;
-
-    if (!detail.phase) return;
-    const key = `${detail.phase.type}:${detail.round}`;
-    if (lastNotifiedKey === key) return;
-    lastNotifiedKey = key;
-    notifications.notifyPhase(detail.phase.type, {
-      round: detail.round,
-      totalRounds: detail.totalRounds,
-    });
-  };
-
   const startPlayback = () => {
     if (!engine || isActive()) return;
     engine.start();
@@ -516,14 +486,13 @@ export function enhancePlayer(root, options) {
       return;
     }
 
-    // Sound only in this turn. Engine/Motion/notifications run after so they
-    // can't stall AudioContext startup on the main thread.
+    // Sound only in this turn. Engine/Motion run after so they can't stall
+    // AudioContext startup on the main thread.
     // Request wake lock in the same turn as the tap for reliability.
     if (engine.status === STATUS.idle) play("start");
     void wakeLock.request();
     setTimeout(() => {
       startPlayback();
-      notifications.ensurePermission();
     }, 0);
   });
 
