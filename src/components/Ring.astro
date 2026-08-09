@@ -20,7 +20,7 @@ const { class: className, ...rest } = Astro.props;
     grid-template-areas: "cell";
     place-items: center;
     min-width: 0;
-    inline-size: 4.5em;
+    inline-size: 6em;
   }
 
   .ring > :global(*) {
@@ -43,5 +43,11 @@ const { class: className, ...rest } = Astro.props;
     fill: none;
     stroke-width: var(--ring-stroke);
     stroke-linecap: var(--segment-linecap, round);
+  }
+
+  @media (min-aspect-ratio: 3/2) {
+    .ring {
+      inline-size: 5em;
+    }
   }
 </style>

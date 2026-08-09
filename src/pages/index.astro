@@ -42,6 +42,7 @@ import {
       name="twitter:description"
       content="A simple interval timer for workouts. Work, rest, repeat."
     />
+
     <meta name="twitter:image" content="https://wrrk.app/og-image.png" />
     <link rel="stylesheet" href="https://use.typekit.net/yys8fwy.css" />
   </head>
@@ -98,7 +99,7 @@ import {
     display: flex;
     flex-direction: column-reverse;
     column-gap: 3em;
-    row-gap: 1.25em;
+    row-gap: 1.6em;
     width: fit-content;
     min-height: 100%;
     margin-inline: auto;
@@ -129,11 +130,16 @@ import {
 
   .sound {
     position: fixed;
-    top: 0.4em;
-    right: 0.4em;
+    top: 1em;
+    right: 0.75em;
+
+    @media (width >= 30rem) {
+      top: 0.4em;
+      right: 0.4em;
+    }
   }
 
-  @media (min-aspect-ratio: 700/600) {
+  @media (min-aspect-ratio: 6/5) {
     .screen {
       flex-direction: row;
       height: fit-content;
@@ -147,11 +153,7 @@ import {
     }
   }
 
-  @media (width <= 24rem) {
-    .screen {
-      column-gap: 2em;
-    }
-
+  @media (width <= 24rem) or (height <= 28rem) {
     .setup {
       flex-direction: column;
     }

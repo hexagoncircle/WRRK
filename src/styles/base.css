@@ -25,6 +25,21 @@
 
   --ring-gap: 4;
   --ring-stroke: 6;
+
+  --page-pad: 2.5rem;
+  --fit-w: calc(100dvw - 2 * var(--page-pad));
+  --fit-h: calc(100dvh - 2 * var(--page-pad));
+  --ui-scale: min(var(--fit-w) / 18, var(--fit-h) / 24);
+
+  @media (min-aspect-ratio: 6/5) {
+    /* Side-by-side setup + timer, rings under clock */
+    --ui-scale: min(var(--fit-w) / 28, var(--fit-h) / 20);
+  }
+
+  @media (min-aspect-ratio: 3/2) {
+    /* Wide timer: clock + rings in a row */
+    --ui-scale: min(var(--fit-w) / 36, var(--fit-h) / 16);
+  }
 }
 
 html {
@@ -38,14 +53,10 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   font-family: var(--font-main);
-  font-size: 5.25vmin;
-  padding: 2rem;
+  padding: var(--page-pad);
   background-color: var(--color-bg);
   color: var(--color-fg);
-
-  @media (max-aspect-ratio: 920/600) and (width > 500px) {
-    font-size: 4.5vmin;
-  }
+  font-size: clamp(0.5rem, var(--ui-scale), 3.25rem);
 }
 
 @keyframes pulse {

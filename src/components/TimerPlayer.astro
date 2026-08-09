@@ -46,7 +46,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
       "status"
       "time"
       "rings";
-    column-gap: 3em;
+    column-gap: inherit;
     row-gap: inherit;
     justify-content: center;
     min-width: 0;
@@ -61,7 +61,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     gap: 0.2em;
     align-items: center;
     inline-size: 100%;
-    font-size: 1.4em;
+    font-size: 1.6em;
     line-height: 1;
     font-family: var(--font-display);
   }
@@ -70,7 +70,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     grid-area: rings;
     display: flex;
     justify-content: space-between;
-    margin-inline: -0.4em;
+    margin-inline: -0.7em;
   }
 
   .round {
@@ -173,7 +173,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     display: none;
   }
 
-  @media (min-aspect-ratio: 920/600) {
+  @media (min-aspect-ratio: 3/2) {
     .timer-player {
       grid-template-areas:
         "time rings"
