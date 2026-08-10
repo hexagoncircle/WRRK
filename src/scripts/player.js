@@ -1,17 +1,9 @@
 import { Temporal } from "@js-temporal/polyfill";
-import {
-  cancelDigitDance,
-  playCountdown,
-  playDigitDance,
-} from "./digit-dance.js";
+import { cancelDigitDance, playCountdown, playDigitDance } from "./digit-dance.js";
 import { STATUS, TimerEngine } from "./engine.js";
 import { formatDurationAttr, formatMSS } from "./utils.js";
 import { LABEL } from "./labels.js";
-import {
-  COUNTDOWN_SECONDS,
-  PREPARE_SECONDS,
-  totalWorkoutSeconds,
-} from "./model.js";
+import { COUNTDOWN_SECONDS, PREPARE_SECONDS, totalWorkoutSeconds } from "./model.js";
 import { createCounterRing } from "./counter-ring.js";
 import { createPhaseLabel } from "./phase-label.js";
 import { createProgressRing } from "./progress-ring.js";
@@ -34,8 +26,7 @@ import { WakeLockController } from "./wake-lock.js";
  * @param {Phase | null | undefined} phase
  * @returns {phase is Phase & { type: 'work' | 'rest' }}
  */
-const isTimedPhase = (phase) =>
-  phase?.type === "work" || phase?.type === "rest";
+const isTimedPhase = (phase) => phase?.type === "work" || phase?.type === "rest";
 
 /**
  * @param {Phase | null | undefined} phase
@@ -66,15 +57,10 @@ export function enhancePlayer(root, options) {
 
   const $progressRing = root.querySelector(".progress-ring");
   const progressRing =
-    $progressRing instanceof HTMLElement
-      ? createProgressRing($progressRing)
-      : null;
+    $progressRing instanceof HTMLElement ? createProgressRing($progressRing) : null;
 
   const $counterRing = root.querySelector(".counter-ring");
-  const counterRing =
-    $counterRing instanceof HTMLElement
-      ? createCounterRing($counterRing)
-      : null;
+  const counterRing = $counterRing instanceof HTMLElement ? createCounterRing($counterRing) : null;
 
   /** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
   let countdownTimeline = null;
@@ -154,10 +140,7 @@ export function enhancePlayer(root, options) {
   };
 
   const syncRingTotals = () => {
-    progressRing?.setTotals(
-      currentConfig.workSeconds,
-      currentConfig.restSeconds,
-    );
+    progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);
   };
 
   /**
@@ -167,13 +150,9 @@ export function enhancePlayer(root, options) {
   const syncRingGeometryForPhase = (phase) => {
     if (!progressRing || !phase) return;
     const lastRound = phase.round === phase.totalRounds;
-    progressRing.setTotals(
-      currentConfig.workSeconds,
-      lastRound ? 0 : currentConfig.restSeconds,
-      {
-        fill: false,
-      },
-    );
+    progressRing.setTotals(currentConfig.workSeconds, lastRound ? 0 : currentConfig.restSeconds, {
+      fill: false,
+    });
   };
 
   /**
@@ -181,11 +160,7 @@ export function enhancePlayer(root, options) {
    * @param {number} remainingSeconds
    * @param {{ settle?: boolean }} [opts]
    */
-  const syncRingProgress = (
-    phase,
-    remainingSeconds,
-    { settle = false } = {},
-  ) => {
+  const syncRingProgress = (phase, remainingSeconds, { settle = false } = {}) => {
     if (!progressRing) return;
     if (!isTimedPhase(phase)) {
       progressRing.reset();
@@ -209,8 +184,7 @@ export function enhancePlayer(root, options) {
   const isStartup = (status = engine?.status) =>
     status === STATUS.preparing || status === STATUS.countdown;
 
-  const isActive = () =>
-    Boolean(engine && (engine.status === STATUS.running || isStartup()));
+  const isActive = () => Boolean(engine && (engine.status === STATUS.running || isStartup()));
 
   const syncRootAttrs = () => {
     attrsRoot.dataset.status = engine?.status ?? STATUS.idle;
@@ -245,9 +219,7 @@ export function enhancePlayer(root, options) {
 
   const secondsUntilPhaseEnd = () => {
     if (!engine?.phaseEndInstant) return 0;
-    return Temporal.Now.instant()
-      .until(engine.phaseEndInstant)
-      .total("seconds");
+    return Temporal.Now.instant().until(engine.phaseEndInstant).total("seconds");
   };
 
   const syncCountdownTimeline = () => {
@@ -257,10 +229,7 @@ export function enhancePlayer(root, options) {
     if (engine.status === STATUS.preparing) {
       countdownTimeline.time = Math.max(0, PREPARE_SECONDS - left);
     } else if (engine.status === STATUS.countdown) {
-      countdownTimeline.time = Math.max(
-        0,
-        PREPARE_SECONDS + COUNTDOWN_SECONDS - left,
-      );
+      countdownTimeline.time = Math.max(0, PREPARE_SECONDS + COUNTDOWN_SECONDS - left);
     }
   };
 
@@ -272,6 +241,10 @@ export function enhancePlayer(root, options) {
       prepSeconds: PREPARE_SECONDS,
       beatSeconds: 1,
       onBeat: (n) => {
+        // Stagger into `3` starts with "Get ready" and the first blip.
+        if (n === COUNTDOWN_SECONDS) {
+          phaseLabel.set(LABEL.set, { animate: false });
+        }
         setCountdownLabel(n);
         blipCountdown(n);
       },
@@ -308,10 +281,7 @@ export function enhancePlayer(root, options) {
    * @param {TimerConfig} [config]
    * @param {{ lightUp?: boolean }} [options]
    */
-  const applyConfig = (
-    config = options.getConfig(),
-    { lightUp = false } = {},
-  ) => {
+  const applyConfig = (config = options.getConfig(), { lightUp = false } = {}) => {
     clearCompleteTimer();
     currentConfig = config;
     engine?.reset();
@@ -389,13 +359,9 @@ export function enhancePlayer(root, options) {
       setPlaybackLabel(LABEL.resume);
       phaseLabel.set(LABEL.paused);
       if (nextEngine.currentPhase && nextEngine.remaining) {
-        syncRingProgress(
-          nextEngine.currentPhase,
-          nextEngine.remaining.total("seconds"),
-          {
-            settle: true,
-          },
-        );
+        syncRingProgress(nextEngine.currentPhase, nextEngine.remaining.total("seconds"), {
+          settle: true,
+        });
       }
       syncSessionState();
       refreshTitle();
@@ -422,10 +388,7 @@ export function enhancePlayer(root, options) {
       }, 3000);
 
       if (wasFinalWork) {
-        progressRing?.setTotals(
-          currentConfig.workSeconds,
-          currentConfig.restSeconds,
-        );
+        progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);
       }
     });
 
@@ -439,10 +402,7 @@ export function enhancePlayer(root, options) {
    * @param {PhaseDetail} detail
    * @param {{ startCountdown?: boolean, syncRing?: boolean }} [opts]
    */
-  const renderPhase = (
-    detail,
-    { startCountdown = false, syncRing = true } = {},
-  ) => {
+  const renderPhase = (detail, { startCountdown = false, syncRing = true } = {}) => {
     if (isStartup(detail.status)) {
       if (detail.status === STATUS.preparing) {
         phaseLabel.set(LABEL.prepare);

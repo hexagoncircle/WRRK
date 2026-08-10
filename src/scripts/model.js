@@ -24,12 +24,12 @@ export const DURATION_MAX = 9 * 60 + 59; // 9:59
 export const DURATION_STEP = 5;
 export const COUNTDOWN_SECONDS = 3;
 export const PREPARE_SECONDS = 3;
-export const ROUNDS_MAX = 100;
+export const ROUNDS_MAX = 99;
 
 export const DEFAULT_CONFIG = Object.freeze({
   workSeconds: 60,
   restSeconds: 30,
-  rounds: 1,
+  rounds: 5,
 });
 
 /**
