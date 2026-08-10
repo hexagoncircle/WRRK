@@ -22,8 +22,9 @@ const { count, class: className, ...rest } = Astro.props;
 
 <style>
   .track,
-  .fill {
-    stroke-dashoffset: calc(var(--segment-gap, var(--ring-gap)) / -2);
+  .fill,
+  .active {
+    stroke-dashoffset: calc(var(--segment-gap, var(--ring-gap)) * -0.5px);
   }
 
   .track {
@@ -43,8 +44,10 @@ const { count, class: className, ...rest } = Astro.props;
 
   .active {
     stroke: var(--color-digit, var(--color-fg));
-    stroke-dasharray: var(--fill-dasharray, 0 100);
-    stroke-dashoffset: var(--fill-dashoffset, calc(var(--segment-gap, var(--ring-gap)) / -2));
+    stroke-dasharray: var(--segment-dash, 0) var(--segment-rest, 100);
+    transform-origin: center;
+    transform-box: view-box;
+    transform: rotate(calc(var(--active-index, 0) * 360deg / var(--count)));
   }
 
   .text {

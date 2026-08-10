@@ -39,25 +39,15 @@ export function createCounterRing(root) {
     const g = geometry(count);
     root.style.setProperty("--segment-gap", String(g.gap));
     root.style.setProperty("--segment-dash", String(g.dash));
+    root.style.setProperty("--segment-rest", String(PATH_LENGTH - g.dash));
     root.style.setProperty("--segment-linecap", g.linecap);
     return g;
   }
 
-  /**
-   * @param {SVGElement | null} el
-   * @param {string} dasharray
-   * @param {boolean} visible
-   * @param {number} [dashoffset]
-   */
-  function paintCircle(el, dasharray, visible, dashoffset) {
-    if (!(el instanceof SVGElement)) return;
-    el.style.setProperty("--fill-dasharray", dasharray);
-    if (dashoffset == null) {
-      el.style.removeProperty("--fill-dashoffset");
-    } else {
-      el.style.setProperty("--fill-dashoffset", String(dashoffset));
-    }
-    el.style.opacity = visible ? "1" : "0";
+  function paintFillRing(dasharray, visible) {
+    if (!($fill instanceof SVGElement)) return;
+    $fill.style.setProperty("--fill-dasharray", dasharray);
+    $fill.style.opacity = visible ? "1" : "0";
   }
 
   /** @param {number} lit How many segments from the start are solid (0..count) */
@@ -65,25 +55,23 @@ export function createCounterRing(root) {
     const { segment, dash, gap } = applyGeometry();
 
     if (lit <= 0) {
-      paintCircle($fill, "0 100", false);
-      paintCircle($active, "0 100", false);
+      paintFillRing("0 100", false);
+      if ($active) $active.style.opacity = "0";
       return;
     }
 
     const completed = lit - 1;
-    if (completed <= 0) {
-      paintCircle($fill, "0 100", false);
+    if (completed === 0) {
+      paintFillRing("0 100", false);
     } else {
       const pattern = [];
-      for (let i = 0; i < completed; i++) {
-        pattern.push(dash, gap);
-      }
+      for (let i = 0; i < completed; i++) pattern.push(dash, gap);
       pattern[pattern.length - 1] = gap + (count - completed) * segment;
-      paintCircle($fill, pattern.join(" "), true);
+      paintFillRing(pattern.join(" "), true);
     }
 
-    const index = lit - 1;
-    paintCircle($active, `${dash} ${100 - dash}`, true, -gap / 2 - index * segment);
+    if ($active) $active.style.opacity = "1";
+    root.style.setProperty("--active-index", String(completed));
   }
 
   function stopAnnounce() {
@@ -117,9 +105,7 @@ export function createCounterRing(root) {
     announcedRound = 0;
     stopAnnounce();
     paintFill(count);
-    if ($current) {
-      $current.textContent = String(clamp(current, 1, count));
-    }
+    if ($current) $current.textContent = String(clamp(current, 1, count));
   }
 
   function clear() {
