@@ -27,7 +27,7 @@ export const PREPARE_SECONDS = 3;
 export const ROUNDS_MAX = 99;
 
 export const DEFAULT_CONFIG = Object.freeze({
-  workSeconds: 60,
+  workSeconds: 30,
   restSeconds: 30,
   rounds: 5,
 });
