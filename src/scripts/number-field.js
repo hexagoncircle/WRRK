@@ -121,10 +121,10 @@ function enhanceNumberField(root) {
     $input.selectionStart === 0 && $input.selectionEnd === $input.value.length;
   const inputFocused = () => document.activeElement === $input;
 
-  const syncButtons = (next) => {
+  const syncButtons = () => {
     const disabled = isDisabled();
-    $decrement.disabled = disabled || next <= min;
-    $increment.disabled = disabled || next + step > max;
+    $decrement.disabled = disabled;
+    $increment.disabled = disabled;
     $input.disabled = disabled;
   };
 
@@ -135,7 +135,7 @@ function enhanceNumberField(root) {
     digitBuffer = secondsToMss(value);
     draftText = String(value);
     $input.value = formatValue(value);
-    syncButtons(value);
+    syncButtons();
 
     if (!silent && changed) {
       root.dispatchEvent(
@@ -162,13 +162,15 @@ function enhanceNumberField(root) {
   const setDisabled = (disabled) => {
     if (disabled) root.setAttribute("data-disabled", "");
     else root.removeAttribute("data-disabled");
-    syncButtons(value);
+    syncButtons();
   };
 
   /** Commit draft, then step — single change event. */
   const stepBy = (delta) => {
     if (isDisabled()) return;
-    setValue(readDraft() + delta);
+    const next = readDraft() + delta;
+    if (next < min || next > max) return;
+    setValue(next);
     play("press");
     if (inputFocused()) armReplace();
   };
