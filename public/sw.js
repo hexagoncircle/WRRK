@@ -1,4 +1,5 @@
-const CACHE_NAME = "wrrk-v1";
+const CACHE_NAME = "wrrk-v2";
+const FONT_HOSTS = new Set(["use.typekit.net", "p.typekit.net"]);
 const PRECACHE = [
   "/",
   "/manifest.webmanifest",
@@ -9,6 +10,14 @@ const PRECACHE = [
   "/web-app-manifest-192x192.png",
   "/web-app-manifest-512x512.png",
 ];
+
+/**
+ * @param {URL} url
+ */
+function shouldHandle(url) {
+  if (url.origin === self.location.origin) return true;
+  return FONT_HOSTS.has(url.hostname);
+}
 
 /**
  * @param {Cache} cache
@@ -48,26 +57,25 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (!shouldHandle(url)) return;
 
   event.respondWith(
     (async () => {
-      const cached = await caches.match(request);
-
       try {
         const response = await fetch(request);
-        if (response.ok) {
+        if (response.ok || response.type === "opaque") {
           const cache = await caches.open(CACHE_NAME);
           await cache.put(request, response.clone());
         }
         return response;
-      } catch {
+      } catch (error) {
+        const cached = await caches.match(request);
         if (cached) return cached;
         if (request.mode === "navigate") {
-          const shell = await caches.match("/");
+          const shell = (await caches.match("/")) || (await caches.match("/index.html"));
           if (shell) return shell;
         }
-        throw new Error("Network unavailable and no cache match.");
+        throw error;
       }
     })(),
   );
