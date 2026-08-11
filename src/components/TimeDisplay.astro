@@ -59,11 +59,11 @@ import Digit from "./Digit.astro";
 
   :global([data-status="paused"]) .time-separator,
   :global([data-status="paused"]) .time :global(.digit path) {
-    animation: pulse 1s steps(1, jump-start) infinite;
+    animation: pulse 1s steps(1, jump-end) infinite;
   }
 
   :global([data-status="complete"]) .time-separator,
   :global([data-status="complete"]) .time :global(.digit path) {
-    animation: pulse 1s steps(1, jump-start) 3 forwards;
+    animation: pulse 1s steps(1, jump-end) 3 forwards;
   }
 </style>

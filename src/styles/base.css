@@ -62,9 +62,9 @@ body {
 @keyframes pulse {
   from,
   to {
-    --color-digit: var(--color-fg-subtle);
+    --color-digit: var(--color-fg);
   }
   50% {
-    --color-digit: var(--color-fg);
+    --color-digit: var(--color-fg-subtle);
   }
 }

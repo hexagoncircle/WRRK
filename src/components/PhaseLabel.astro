@@ -51,10 +51,10 @@ const { label = LABEL.idle } = Astro.props;
   }
 
   :global([data-status="preparing"]) .phase {
-    animation: pulse 1s steps(1, jump-start) 3;
+    animation: pulse 1s steps(1, jump-end) 3;
   }
 
   :global([data-status="complete"]) .phase :global(.phase-label) {
-    animation: pulse 1s steps(1, jump-start) 3 forwards;
+    animation: pulse 1s steps(1, jump-end) 3 forwards;
   }
 </style>

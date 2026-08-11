@@ -59,7 +59,7 @@ const { count, class: className, ...rest } = Astro.props;
   }
 
   .counter-ring[data-announce] {
-    animation: pulse 1s steps(1, jump-start) 3;
+    animation: pulse 1s steps(1, jump-end) 2 forwards;
 
     .text {
       font-size: 1.8em;
@@ -69,6 +69,14 @@ const { count, class: className, ...rest } = Astro.props;
     .sep,
     .total {
       display: none;
+    }
+  }
+
+  :global([data-status="complete"]) .counter-ring {
+    animation: pulse 1s steps(1, jump-end) 3 forwards;
+
+    .fill {
+      stroke: var(--color-digit, var(--color-fg));
     }
   }
 </style>

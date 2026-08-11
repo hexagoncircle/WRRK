@@ -164,10 +164,6 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     }
   }
 
-  :global([data-status="complete"]) .rings {
-    animation: pulse 1s steps(1, jump-start) 3 forwards;
-  }
-
   .playback[data-action="play"] :global([data-icon="pause"]),
   .playback[data-action="pause"] :global([data-icon="play"]) {
     display: none;

@@ -78,7 +78,11 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     width: var(--size);
     height: var(--size);
     border-radius: 50%;
-    background-color: var(--color-fg);
+    background-color: var(--color-digit, var(--color-fg));
+  }
+
+  :global([data-status="complete"]) .progress-ring {
+    animation: pulse 1s steps(1, jump-end) 3 forwards;
   }
 
   /* [data-phase] for the blinking dot lives on the app root, not these <g>s. */
