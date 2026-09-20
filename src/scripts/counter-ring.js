@@ -3,7 +3,7 @@ import { clamp, createTimeout } from "./utils.js";
 const ANNOUNCE_MS = 3000;
 const PATH_LENGTH = 100;
 const GAP_SHARE = 0.6;
-const ROUND_MAX_COUNT = 30;
+const ROUND_LINECAP_THRESHOLD = 30;
 
 /**
  * Segmented rounds counter driven by CSS custom properties.
@@ -23,7 +23,7 @@ export function createCounterRing(root) {
     const baseGap =
       Number.parseFloat(getComputedStyle(root).getPropertyValue("--ring-gap")) || 0;
     const segment = PATH_LENGTH / n;
-    const linecap = n <= ROUND_MAX_COUNT ? "round" : "butt";
+    const linecap = n <= ROUND_LINECAP_THRESHOLD ? "round" : "butt";
 
     if (linecap === "round") {
       const gap = Math.min(baseGap, segment);

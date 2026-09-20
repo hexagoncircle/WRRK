@@ -10,6 +10,8 @@ import { createProgressRing } from "./progress-ring.js";
 import { play } from "./sounds.js";
 import { WakeLockController } from "./wake-lock.js";
 
+const COMPLETE_RESET_MS = 3000;
+
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
 /** @typedef {import('./model.js').Phase} Phase */
 
@@ -364,7 +366,7 @@ export function enhancePlayer(root, options) {
 
       completeTimer.set(() => {
         applyConfig(undefined, { lightUp: true });
-      }, 3000);
+      }, COMPLETE_RESET_MS);
 
       if (wasFinalWork) {
         progressRing?.setTotals(currentConfig.workSeconds, currentConfig.restSeconds);

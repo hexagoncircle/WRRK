@@ -7,28 +7,35 @@ const LINE = "1lh";
 const SLIDE_DOWN = new Set([LABEL.prepare, LABEL.paused]);
 
 /**
+ * @param {HTMLElement} root
+ * @returns {HTMLElement}
+ */
+function ensureTrack(root) {
+  const existing = root.querySelector(".phase-track");
+  if (existing instanceof HTMLElement) return existing;
+
+  const el = document.createElement("div");
+  el.className = "phase-track";
+  el.setAttribute("aria-hidden", "true");
+  const label = root.querySelector(".phase-label");
+  if (label) el.append(label);
+  else if (root.textContent?.trim()) {
+    const next = document.createElement("div");
+    next.className = "phase-label";
+    next.textContent = root.textContent.trim();
+    el.append(next);
+  }
+  root.replaceChildren(el);
+  return el;
+}
+
+/**
  * Slide text up: outgoing exits top, incoming enters from below (clipped).
  * @param {HTMLElement} root Clip container (e.g. `.phase`)
  */
 export function createPhaseLabel(root) {
   /** @type {HTMLElement} */
-  let track =
-    root.querySelector(".phase-track") ??
-    (() => {
-      const el = document.createElement("div");
-      el.className = "phase-track";
-      el.setAttribute("aria-hidden", "true");
-      const existing = root.querySelector(".phase-label");
-      if (existing) el.append(existing);
-      else if (root.textContent?.trim()) {
-        const label = document.createElement("div");
-        label.className = "phase-label";
-        label.textContent = root.textContent.trim();
-        el.append(label);
-      }
-      root.replaceChildren(el);
-      return el;
-    })();
+  let track = ensureTrack(root);
 
   track.setAttribute("aria-hidden", "true");
 

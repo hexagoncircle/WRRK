@@ -132,17 +132,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     opacity: 1;
   }
 
-  :global([data-status="preparing"]) {
-    .timer-player {
-      cursor: wait;
-    }
-
-    .playback:disabled {
-      cursor: default;
-      pointer-events: none;
-    }
-  }
-
+  :global([data-status="preparing"]),
   :global([data-status="countdown"]) {
     .timer-player {
       cursor: wait;
