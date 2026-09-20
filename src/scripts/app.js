@@ -1,5 +1,6 @@
 import { createConfig } from "./model.js";
 import { loadConfig, saveConfig } from "./storage.js";
+import { playIntro } from "./intro.js";
 
 /**
  * @typedef {HTMLElement & { name: string, value: number, disabled: boolean }} NumberFieldEl
@@ -59,6 +60,7 @@ async function main() {
     }
   };
 
+  // Enhance first so the timer is live under the intro; digit dance starts on reveal.
   const player = await /** @type {TimerPlayerEl} */ ($player).enhance({
     getConfig: readConfig,
     attrsRoot: $app,
@@ -69,6 +71,10 @@ async function main() {
     const config = readConfig();
     saveConfig(config);
     player.softReset(config);
+  });
+
+  await playIntro($app, {
+    onReveal: () => player.softReset(readConfig(), { lightUp: true }),
   });
 }
 

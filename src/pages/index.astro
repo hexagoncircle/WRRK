@@ -6,6 +6,7 @@ import "../styles/base.css";
 import SoundControl from "../components/SoundControl.astro";
 import NumberField from "../components/NumberField.astro";
 import TimerPlayer from "../components/TimerPlayer.astro";
+import IntroScreen from "../components/IntroScreen.astro";
 import {
   DURATION_MAX,
   DURATION_MIN,
@@ -18,6 +19,9 @@ import {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <script is:inline>
+      document.documentElement.dataset.intro = navigator.onLine ? "pending" : "done";
+    </script>
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
@@ -49,6 +53,7 @@ import {
     <link rel="stylesheet" href="https://use.typekit.net/yys8fwy.css" />
   </head>
   <body>
+    <IntroScreen />
     <main id="app" class="screen" data-status="idle">
       <h1 class="sr-only">WRRK</h1>
       <SoundControl class="sound" />
@@ -93,6 +98,13 @@ import {
     </script>
   </body>
 </html>
+
+<style is:global>
+  /* Timer stays painted under the white intro so the digit dance can start before the curtain lifts. */
+  html[data-intro="pending"] #app {
+    pointer-events: none;
+  }
+</style>
 
 <style>
   .screen {

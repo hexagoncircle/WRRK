@@ -470,7 +470,10 @@ export function enhancePlayer(root, options) {
     if (!document.hidden) syncCountdownTimeline();
   });
 
-  applyConfig(currentConfig, { lightUp: true });
+  // Defer the digit dance until the intro starts sliding up so it is visible
+  // through the curtain rather than finishing under opaque white.
+  const introPending = document.documentElement.dataset.intro === "pending";
+  applyConfig(currentConfig, { lightUp: !introPending });
 
   return {
     softReset: applyConfig,

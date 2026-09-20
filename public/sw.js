@@ -1,4 +1,4 @@
-const CACHE_NAME = "wrrk-v3";
+const CACHE_NAME = "wrrk-v7";
 const FONT_HOSTS = new Set(["use.typekit.net", "p.typekit.net"]);
 const PRECACHE = [
   "/",
@@ -11,6 +11,17 @@ const PRECACHE = [
   "/web-app-manifest-192x192.png",
   "/web-app-manifest-512x512.png",
 ];
+
+/** Intro media — online-only; never store in the SW cache. */
+const INTRO_ASSET =
+  /^\/wrrk-(jumprope|run|stretch|weights)\.(json|svg)$/;
+
+/**
+ * @param {URL} url
+ */
+function isIntroAsset(url) {
+  return url.origin === self.location.origin && INTRO_ASSET.test(url.pathname);
+}
 
 /**
  * @param {URL} url
@@ -131,7 +142,8 @@ async function revalidate(request) {
  */
 async function fetchAndCache(request, { updateShell = false } = {}) {
   const response = await fetch(request);
-  if (response.ok && response.type !== "opaque") {
+  const url = new URL(request.url);
+  if (response.ok && response.type !== "opaque" && !isIntroAsset(url)) {
     const cache = await caches.open(CACHE_NAME);
     await cachePut(cache, request, response.clone());
     if (updateShell) {
@@ -168,6 +180,12 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (!shouldHandle(url)) return;
+
+  // Intro media is online-only — never read or write the SW cache for it.
+  if (isIntroAsset(url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   const isNavigate = request.mode === "navigate";
   const isImmutableAsset = url.origin === self.location.origin && url.pathname.startsWith("/_astro/");
