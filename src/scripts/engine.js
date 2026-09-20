@@ -1,4 +1,5 @@
 import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhases } from "./model.js";
+import { PRESS_WORKER_SOURCE } from "./timer-worker.js";
 import { createTimeout } from "./utils.js";
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
@@ -21,7 +22,7 @@ const TIMED = new Set([STATUS.running, STATUS.preparing, STATUS.countdown]);
 /**
  * Drift-free interval engine.
  * Deadlines use absolute Date.now() milliseconds so hidden-tab throttling can catch up.
- * Ticks are driven by timer-worker.js (steady cadence while the tab is hidden).
+ * Ticks are driven by an inlined classic worker (steady cadence while the tab is hidden).
  */
 export class TimerEngine extends EventTarget {
   /**
@@ -46,6 +47,8 @@ export class TimerEngine extends EventTarget {
     this._pausedFrom = null;
     /** @type {Worker | null} */
     this._worker = null;
+    /** @type {string | null} */
+    this._workerUrl = null;
     this._boundaryTimer = createTimeout();
   }
 
@@ -207,7 +210,9 @@ export class TimerEngine extends EventTarget {
 
   _startTicking() {
     if (!this._worker) {
-      this._worker = new Worker(new URL("./timer-worker.js", import.meta.url), { type: "module" });
+      const url = URL.createObjectURL(new Blob([PRESS_WORKER_SOURCE], { type: "text/javascript" }));
+      this._workerUrl = url;
+      this._worker = new Worker(url);
       this._worker.addEventListener("message", this._onWorkerMessage);
     }
     this._worker.postMessage({ type: "start", interval: 250 });
@@ -225,6 +230,10 @@ export class TimerEngine extends EventTarget {
       this._worker.postMessage({ type: "stop" });
       this._worker.terminate();
       this._worker = null;
+    }
+    if (this._workerUrl) {
+      URL.revokeObjectURL(this._workerUrl);
+      this._workerUrl = null;
     }
   }
 }

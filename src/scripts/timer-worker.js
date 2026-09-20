@@ -1,6 +1,8 @@
-/** Posts `{ type: "press" }` on an interval for TimerEngine. */
-
-/** @type {ReturnType<typeof setInterval> | null} */
+/**
+ * Classic worker source for TimerEngine.
+ * Inlined as a Blob URL so Start works offline with no separate fetch.
+ */
+export const PRESS_WORKER_SOURCE = `
 let intervalId = null;
 
 self.addEventListener("message", (event) => {
@@ -20,3 +22,4 @@ self.addEventListener("message", (event) => {
     }
   }
 });
+`;
