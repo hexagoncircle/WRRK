@@ -314,7 +314,13 @@ function renderRecipe(audio, output, recipe, startTime, { volume = 1, pan = 0 } 
 
   const cleanupAfterMs = (sourceEnd(recipe) + shimmerTail(recipe.shimmer) + CLEANUP_MARGIN) * 1000;
   setTimeout(() => {
-    for (const node of cleanupNodes) node.disconnect();
+    // Context may already be closed by teardownAudio after backgrounding.
+    if (audio.state === "closed") return;
+    for (const node of cleanupNodes) {
+      try {
+        node.disconnect();
+      } catch {}
+    }
   }, cleanupAfterMs);
 }
 

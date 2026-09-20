@@ -5,6 +5,8 @@ import { toPhaseType } from "./model.js";
 const DURATION = 0.2;
 const LINE = "1lh";
 const SLIDE_DOWN = new Set([LABEL.prepare, LABEL.paused]);
+/** Shared display copy — LABEL.start and LABEL.idle are both "Start". */
+const START_COPY = new Set([LABEL.start, LABEL.idle]);
 
 /**
  * @param {HTMLElement} root
@@ -147,10 +149,7 @@ export function createPhaseLabel(root) {
       return;
     }
 
-    if (
-      next === LABEL.start &&
-      (text === LABEL.complete || text === LABEL.paused)
-    ) {
+    if (START_COPY.has(next) && (text === LABEL.complete || text === LABEL.paused)) {
       snap(next, resolvedTone);
       return;
     }

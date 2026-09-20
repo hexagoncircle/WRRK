@@ -8,7 +8,7 @@ interface Props {
 const { label = LABEL.idle } = Astro.props;
 ---
 
-<div class="phase" aria-label={label}>
+<div class="phase" aria-live="polite" aria-label={label}>
   <div class="phase-track" aria-hidden="true">
     <div class="phase-label">{label}</div>
   </div>

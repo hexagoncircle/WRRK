@@ -13,8 +13,8 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
 
 <article class:list={["timer-player", className]} data-player {...rest}>
   <TimeDisplay />
-  <div class="status" aria-live="polite">
-    <div class="round">
+  <div class="status">
+    <div class="round" aria-live="polite">
       <span class="round-label" hidden>Round</span>
       <Icon name="clock" aria-hidden="true" />
       <output class="round-current">{totalTime}</output>

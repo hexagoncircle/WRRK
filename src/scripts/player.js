@@ -12,6 +12,19 @@ import { WakeLockController } from "./wake-lock.js";
 
 const COMPLETE_RESET_MS = 3000;
 
+/**
+ * @param {ParentNode} root
+ * @param {string} selector
+ * @returns {HTMLElement}
+ */
+function requireEl(root, selector) {
+  const el = root.querySelector(selector);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`Missing required element: ${selector}`);
+  }
+  return el;
+}
+
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
 /** @typedef {import('./model.js').Phase} Phase */
 
@@ -35,15 +48,14 @@ const COMPLETE_RESET_MS = 3000;
  */
 export function enhancePlayer(root, options) {
   const attrsRoot = options.attrsRoot ?? root;
-  const $time = root.querySelector(".time");
+  const $time = /** @type {HTMLElement & { dateTime?: string }} */ (requireEl(root, ".time"));
   const $digits = root.querySelectorAll("[data-digit]");
-  const $roundLabel = root.querySelector(".round-label");
-  const $roundCurrent = root.querySelector(".round-current");
-  const $phase = root.querySelector(".phase");
-  const phaseLabel = createPhaseLabel(/** @type {HTMLElement} */ ($phase));
-  const $playback = root.querySelector(".playback");
-  const $playbackLabel = $playback.querySelector(".label");
-  const $reset = root.querySelector(".reset");
+  const $roundLabel = requireEl(root, ".round-label");
+  const $roundCurrent = requireEl(root, ".round-current");
+  const phaseLabel = createPhaseLabel(requireEl(root, ".phase"));
+  const $playback = requireEl(root, ".playback");
+  const $playbackLabel = requireEl($playback, ".label");
+  const $reset = requireEl(root, ".reset");
 
   const $progressRing = root.querySelector(".progress-ring");
   const progressRing =
@@ -54,12 +66,12 @@ export function enhancePlayer(root, options) {
 
   const { setPlaybackLabel, setTime, setCountdownLabel, setRound, setIdleRound } =
     createPlayerDisplay({
-      time: /** @type {HTMLElement & { dateTime?: string }} */ ($time),
+      time: $time,
       digits: $digits,
-      roundLabel: /** @type {HTMLElement} */ ($roundLabel),
-      roundCurrent: /** @type {HTMLElement} */ ($roundCurrent),
-      playback: /** @type {HTMLElement} */ ($playback),
-      playbackLabel: /** @type {HTMLElement} */ ($playbackLabel),
+      roundLabel: $roundLabel,
+      roundCurrent: $roundCurrent,
+      playback: $playback,
+      playbackLabel: $playbackLabel,
     });
 
   /** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
