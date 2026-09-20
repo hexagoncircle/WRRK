@@ -1,11 +1,12 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { cancelDigitDance, playCountdown, playDigitDance } from "./digit-dance.js";
 import { STATUS, TimerEngine } from "./engine.js";
-import { createTimeout, formatDurationAttr, formatMSS } from "./utils.js";
+import { createTimeout, formatMSS } from "./utils.js";
 import { LABEL } from "./labels.js";
-import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhaseType, totalWorkoutSeconds } from "./model.js";
+import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhaseType } from "./model.js";
 import { createCounterRing } from "./counter-ring.js";
 import { createPhaseLabel } from "./phase-label.js";
+import { createPlayerDisplay } from "./player-display.js";
 import { createProgressRing } from "./progress-ring.js";
 import { play } from "./sounds.js";
 import { WakeLockController } from "./wake-lock.js";
@@ -52,53 +53,19 @@ export function enhancePlayer(root, options) {
   const $counterRing = root.querySelector(".counter-ring");
   const counterRing = $counterRing instanceof HTMLElement ? createCounterRing($counterRing) : null;
 
+  const { setPlaybackLabel, setTime, setCountdownLabel, setRound, setIdleRound } =
+    createPlayerDisplay({
+      time: /** @type {HTMLElement & { dateTime?: string }} */ ($time),
+      digits: $digits,
+      roundLabel: /** @type {HTMLElement} */ ($roundLabel),
+      roundCurrent: /** @type {HTMLElement} */ ($roundCurrent),
+      playback: /** @type {HTMLElement} */ ($playback),
+      playbackLabel: /** @type {HTMLElement} */ ($playbackLabel),
+    });
+
   /** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
   let countdownTimeline = null;
   const completeTimer = createTimeout();
-
-  /** @param {string} text */
-  const setPlaybackLabel = (text) => {
-    $playbackLabel.textContent = text;
-    $playback.dataset.action = text === LABEL.pause ? "pause" : "play";
-  };
-
-  /**
-   * Map a whole-second countdown onto the digit SVGs (M:SS, max 9:59).
-   * @param {number} seconds
-   */
-  const setTime = (seconds) => {
-    const label = formatMSS(seconds);
-    const [mins, secs] = label.split(":");
-    const values = [mins, secs[0], secs[1]];
-
-    $digits.forEach((el, i) => {
-      const digit = values[i] ?? "0";
-      if (el.dataset.digit !== digit) {
-        el.dataset.digit = digit;
-      }
-    });
-
-    $time.dateTime = formatDurationAttr(seconds);
-    $time.setAttribute("aria-label", label);
-  };
-
-  /** @param {number} n */
-  const setCountdownLabel = (n) => {
-    $time.dateTime = `PT${n}S`;
-    $time.setAttribute("aria-label", String(n));
-  };
-
-  /** @param {number | null} current */
-  const setRound = (current) => {
-    const pending = current == null;
-    $roundLabel.hidden = pending;
-    $roundCurrent.textContent = pending ? "––" : String(current);
-  };
-
-  const setIdleRound = () => {
-    $roundLabel.hidden = true;
-    $roundCurrent.textContent = formatMSS(totalWorkoutSeconds(currentConfig));
-  };
 
   /** @type {TimerEngine | null} */
   let engine = null;
@@ -248,7 +215,7 @@ export function enhancePlayer(root, options) {
   const setIdleDisplay = () => {
     stopCountdownTimeline();
     setTime(currentConfig.workSeconds);
-    setIdleRound();
+    setIdleRound(currentConfig);
     phaseLabel.set(LABEL.idle);
     setPlaybackLabel(LABEL.start);
     $playback.disabled = false;
