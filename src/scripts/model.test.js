@@ -7,6 +7,7 @@ import {
   DURATION_MIN,
   normalizeStoredConfig,
   ROUNDS_MAX,
+  toPhaseType,
   toPhases,
   totalWorkoutSeconds,
 } from "./model.js";
@@ -55,6 +56,15 @@ describe("totalWorkoutSeconds", () => {
   it("sums work and rest, omitting the final rest", () => {
     assert.equal(totalWorkoutSeconds({ workSeconds: 30, restSeconds: 10, rounds: 3 }), 110);
     assert.equal(totalWorkoutSeconds({ workSeconds: 30, restSeconds: 10, rounds: 1 }), 30);
+  });
+});
+
+describe("toPhaseType", () => {
+  it("narrows work and rest, otherwise null", () => {
+    assert.equal(toPhaseType("work"), "work");
+    assert.equal(toPhaseType("rest"), "rest");
+    assert.equal(toPhaseType("other"), null);
+    assert.equal(toPhaseType(undefined), null);
   });
 });
 

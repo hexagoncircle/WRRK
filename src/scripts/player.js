@@ -1,9 +1,9 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { cancelDigitDance, playCountdown, playDigitDance } from "./digit-dance.js";
 import { STATUS, TimerEngine } from "./engine.js";
-import { formatDurationAttr, formatMSS } from "./utils.js";
+import { createTimeout, formatDurationAttr, formatMSS } from "./utils.js";
 import { LABEL } from "./labels.js";
-import { COUNTDOWN_SECONDS, PREPARE_SECONDS, totalWorkoutSeconds } from "./model.js";
+import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhaseType, totalWorkoutSeconds } from "./model.js";
 import { createCounterRing } from "./counter-ring.js";
 import { createPhaseLabel } from "./phase-label.js";
 import { createProgressRing } from "./progress-ring.js";
@@ -21,18 +21,6 @@ import { WakeLockController } from "./wake-lock.js";
  *   totalRounds: number,
  * }} PhaseDetail
  */
-
-/**
- * @param {Phase | null | undefined} phase
- * @returns {phase is Phase & { type: 'work' | 'rest' }}
- */
-const isTimedPhase = (phase) => phase?.type === "work" || phase?.type === "rest";
-
-/**
- * @param {Phase | null | undefined} phase
- * @returns {'work' | 'rest' | null}
- */
-const timedPhaseType = (phase) => (isTimedPhase(phase) ? phase.type : null);
 
 /**
  * Progressive enhancement for the timer player.
@@ -64,14 +52,7 @@ export function enhancePlayer(root, options) {
 
   /** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
   let countdownTimeline = null;
-  /** @type {ReturnType<typeof setTimeout> | null} */
-  let completeTimer = null;
-
-  const clearCompleteTimer = () => {
-    if (completeTimer == null) return;
-    clearTimeout(completeTimer);
-    completeTimer = null;
-  };
+  const completeTimer = createTimeout();
 
   /** @param {string} text */
   const setPlaybackLabel = (text) => {
@@ -162,13 +143,13 @@ export function enhancePlayer(root, options) {
    */
   const syncRingProgress = (phase, remainingSeconds, { settle = false } = {}) => {
     if (!progressRing) return;
-    if (!isTimedPhase(phase)) {
+    if (!toPhaseType(phase?.type)) {
       progressRing.reset();
       return;
     }
     progressRing.setProgress(
       {
-        phase: phase.type,
+        phase: /** @type {'work' | 'rest'} */ (phase.type),
         remainingSeconds,
         durationSeconds: phase.durationSeconds,
       },
@@ -189,7 +170,7 @@ export function enhancePlayer(root, options) {
   const syncRootAttrs = () => {
     attrsRoot.dataset.status = engine?.status ?? STATUS.idle;
 
-    const phaseType = timedPhaseType(engine?.currentPhase);
+    const phaseType = toPhaseType(engine?.currentPhase?.type);
     if (phaseType) {
       attrsRoot.dataset.phase = phaseType;
     } else {
@@ -282,7 +263,7 @@ export function enhancePlayer(root, options) {
    * @param {{ lightUp?: boolean }} [options]
    */
   const applyConfig = (config = options.getConfig(), { lightUp = false } = {}) => {
-    clearCompleteTimer();
+    completeTimer.clear();
     currentConfig = config;
     engine?.reset();
     engine = new TimerEngine(config);
@@ -297,14 +278,14 @@ export function enhancePlayer(root, options) {
    */
   const onPhaseChange = (event) => {
     const detail = event.detail;
-    if (detail.status === STATUS.running && isTimedPhase(detail.phase)) {
+    if (detail.status === STATUS.running && toPhaseType(detail.phase?.type)) {
       play(detail.phase.type);
     }
     lastBlippedSecond = null;
     renderPhase(detail, {
       startCountdown: detail.status === STATUS.preparing,
     });
-    lastPhaseType = timedPhaseType(detail.phase);
+    lastPhaseType = toPhaseType(detail.phase?.type);
     syncSessionState();
   };
 
@@ -321,7 +302,7 @@ export function enhancePlayer(root, options) {
       setTime(detail.remainingSeconds);
       syncRingProgress(detail.phase, detail.remainingSeconds);
 
-      if (detail.status === STATUS.running && isTimedPhase(detail.phase)) {
+      if (detail.status === STATUS.running && toPhaseType(detail.phase?.type)) {
         const sec = Math.ceil(detail.remainingSeconds);
         if (sec !== lastBlippedSecond) {
           lastBlippedSecond = sec;
@@ -381,9 +362,7 @@ export function enhancePlayer(root, options) {
       syncSessionState();
       refreshTitle();
 
-      clearCompleteTimer();
-      completeTimer = setTimeout(() => {
-        completeTimer = null;
+      completeTimer.set(() => {
         applyConfig(undefined, { lightUp: true });
       }, 3000);
 
@@ -416,7 +395,7 @@ export function enhancePlayer(root, options) {
     } else if (detail.phase) {
       stopCountdownTimeline();
       const type = detail.phase.type;
-      const tone = timedPhaseType(detail.phase);
+      const tone = toPhaseType(detail.phase.type);
       phaseLabel.set(LABEL[type] ?? type, { tone });
       setRound(detail.round ?? 1);
       counterRing?.setActive(detail.round ?? 1, detail.totalRounds);

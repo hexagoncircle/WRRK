@@ -1,4 +1,4 @@
-import { clamp } from "./utils.js";
+import { clamp, createTimeout } from "./utils.js";
 
 const ANNOUNCE_MS = 3000;
 const PATH_LENGTH = 100;
@@ -17,8 +17,7 @@ export function createCounterRing(root) {
 
   let count = clamp(root.style.getPropertyValue("--count"), 1, Number.MAX_SAFE_INTEGER);
   let announcedRound = 0;
-  /** @type {ReturnType<typeof setTimeout> | null} */
-  let announceTimer = null;
+  const announceTimer = createTimeout();
 
   function geometry(n) {
     const baseGap =
@@ -75,10 +74,7 @@ export function createCounterRing(root) {
   }
 
   function stopAnnounce() {
-    if (announceTimer != null) {
-      clearTimeout(announceTimer);
-      announceTimer = null;
-    }
+    announceTimer.clear();
     delete root.dataset.announce;
   }
 
@@ -87,8 +83,7 @@ export function createCounterRing(root) {
     announcedRound = round;
     stopAnnounce();
     root.dataset.announce = "";
-    announceTimer = setTimeout(() => {
-      announceTimer = null;
+    announceTimer.set(() => {
       delete root.dataset.announce;
     }, ANNOUNCE_MS);
   }

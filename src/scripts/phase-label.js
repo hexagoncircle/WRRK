@@ -1,17 +1,10 @@
 import { animate, steps } from "motion";
 import { LABEL } from "./labels.js";
+import { toPhaseType } from "./model.js";
 
 const DURATION = 0.2;
 const LINE = "1lh";
 const SLIDE_DOWN = new Set([LABEL.prepare, LABEL.paused]);
-
-/**
- * @param {string | null | undefined} tone
- * @returns {"work" | "rest" | null}
- */
-function normalizeTone(tone) {
-  return tone === "work" || tone === "rest" ? tone : null;
-}
 
 /**
  * Slide text up: outgoing exits top, incoming enters from below (clipped).
@@ -43,7 +36,7 @@ export function createPhaseLabel(root) {
   let label = track.querySelector(".phase-label");
   let text = label?.textContent ?? "";
   /** @type {"work" | "rest" | null} */
-  let tone = normalizeTone(label?.dataset.tone ?? root.dataset.tone);
+  let tone = toPhaseType(label?.dataset.tone ?? root.dataset.tone);
   /** @type {{ stop: () => void } | null} */
   let active = null;
 
@@ -139,7 +132,7 @@ export function createPhaseLabel(root) {
    * @param {{ tone?: string | null, animate?: boolean, from?: "bottom" | "top" }} [opts]
    */
   const set = (next, { tone: nextTone = null, animate: shouldAnimate = true, from } = {}) => {
-    const resolvedTone = normalizeTone(nextTone);
+    const resolvedTone = toPhaseType(nextTone);
     if (next === text && resolvedTone === tone && !active) return;
 
     if (next === LABEL.complete) {

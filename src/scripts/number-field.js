@@ -1,5 +1,5 @@
 import { play } from "./sounds.js";
-import { clamp, formatMSS } from "./utils.js";
+import { clamp, formatClock, formatMSS } from "./utils.js";
 
 /** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
 function secondsToMss(totalSeconds) {
@@ -21,7 +21,7 @@ function mssToSeconds(mss) {
 /** Format digit buffer as M:SS without normalizing seconds (e.g. 569 → "5:69"). */
 function formatMssBuffer(mss) {
   const [minutes, seconds] = splitMss(mss);
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  return formatClock(minutes, seconds);
 }
 
 function parseDurationInput(text) {

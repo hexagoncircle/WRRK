@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { clamp, formatDurationAttr, formatMSS } from "./utils.js";
+import { clamp, clampNumber, formatClock, formatDurationAttr, formatMSS } from "./utils.js";
 
 describe("clamp", () => {
   it("clamps within an inclusive integer range", () => {
@@ -23,6 +23,25 @@ describe("clamp", () => {
 
   it("coerces numeric strings", () => {
     assert.equal(clamp("7", 1, 10), 7);
+  });
+});
+
+describe("clampNumber", () => {
+  it("clamps without truncating", () => {
+    assert.equal(clampNumber(5.5, 1, 10), 5.5);
+    assert.equal(clampNumber(-0.5, -1, 1), -0.5);
+    assert.equal(clampNumber(2, -1, 1), 1);
+  });
+
+  it("returns lo for non-finite values", () => {
+    assert.equal(clampNumber(NaN, 0, 100), 0);
+  });
+});
+
+describe("formatClock", () => {
+  it("joins minutes and seconds without normalizing", () => {
+    assert.equal(formatClock(5, 69), "5:69");
+    assert.equal(formatClock(1, 5), "1:05");
   });
 });
 

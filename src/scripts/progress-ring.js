@@ -1,3 +1,5 @@
+import { clampNumber } from "./utils.js";
+
 /** Must match `--duration` on [data-phase] groups in ProgressRing.astro */
 const TRANSITION_SECONDS = 0.4;
 
@@ -103,7 +105,7 @@ export function createProgressRing(root) {
 
   function progressAt(elapsed, duration) {
     if (duration <= 0) return 0;
-    return Math.min(100, Math.max(0, (elapsed / duration) * 100));
+    return clampNumber((elapsed / duration) * 100, 0, 100);
   }
 
   /** Map a single-phase progress value onto work/rest fills. */

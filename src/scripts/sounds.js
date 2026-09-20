@@ -1,3 +1,5 @@
+import { clampNumber } from "./utils.js";
+
 /** @type {AudioContext | null} */
 let audioCtx = null;
 /** @type {GainNode | null} */
@@ -597,7 +599,7 @@ function renderRecipe(audio, output, recipe, startTime, { volume = 1, pan = 0 } 
   /** @type {AudioNode[]} */
   const cleanupNodes = [bus];
 
-  const clampedPan = Math.max(-1, Math.min(1, pan));
+  const clampedPan = clampNumber(pan, -1, 1);
   if (clampedPan !== 0) {
     const panner = audio.createStereoPanner();
     panner.pan.setValueAtTime(clampedPan, startTime);

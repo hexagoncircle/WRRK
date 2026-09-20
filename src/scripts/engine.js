@@ -1,5 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhases } from "./model.js";
+import { createTimeout } from "./utils.js";
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
 /** @typedef {import('./model.js').Phase} Phase */
@@ -44,8 +45,7 @@ export class TimerEngine extends EventTarget {
     this._pausedFrom = null;
     /** @type {Worker | null} */
     this._worker = null;
-    /** @type {ReturnType<typeof setTimeout> | null} */
-    this._boundaryTimer = null;
+    this._boundaryTimer = createTimeout();
   }
 
   /** @returns {Phase | null} */
@@ -96,13 +96,6 @@ export class TimerEngine extends EventTarget {
     this.dispatchEvent(new CustomEvent("reset"));
   }
 
-  _clearBoundaryTimer() {
-    if (this._boundaryTimer != null) {
-      clearTimeout(this._boundaryTimer);
-      this._boundaryTimer = null;
-    }
-  }
-
   /**
    * @param {Temporal.Duration} [overrideRemaining]
    * @param {Temporal.Instant} [fromInstant]
@@ -112,12 +105,8 @@ export class TimerEngine extends EventTarget {
       overrideRemaining ??
       Temporal.Duration.from({ seconds: this.currentPhase?.durationSeconds ?? 0 });
     this.phaseEndInstant = fromInstant.add(base);
-    this._clearBoundaryTimer();
     const ms = Math.max(0, fromInstant.until(this.phaseEndInstant).total("milliseconds"));
-    this._boundaryTimer = setTimeout(() => {
-      this._boundaryTimer = null;
-      this._tick();
-    }, ms);
+    this._boundaryTimer.set(() => this._tick(), ms);
   }
 
   /**
@@ -131,7 +120,7 @@ export class TimerEngine extends EventTarget {
     if (this.phaseIndex >= this.phases.length) {
       this.status = STATUS.complete;
       this.phaseEndInstant = null;
-      this._clearBoundaryTimer();
+      this._boundaryTimer.clear();
       this._disposeWorker();
       this.dispatchEvent(new CustomEvent("complete"));
       return;
@@ -230,12 +219,12 @@ export class TimerEngine extends EventTarget {
   }
 
   _stopTicking() {
-    this._clearBoundaryTimer();
+    this._boundaryTimer.clear();
     this._worker?.postMessage({ type: "stop" });
   }
 
   _disposeWorker() {
-    this._clearBoundaryTimer();
+    this._boundaryTimer.clear();
     if (this._worker) {
       this._worker.postMessage({ type: "stop" });
       this._worker.terminate();

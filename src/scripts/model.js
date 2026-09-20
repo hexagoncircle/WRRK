@@ -93,6 +93,14 @@ export function totalWorkoutSeconds(config) {
 
 /**
  * @param {unknown} value
+ * @returns {PhaseType | null}
+ */
+export function toPhaseType(value) {
+  return value === "work" || value === "rest" ? value : null;
+}
+
+/**
+ * @param {unknown} value
  * @returns {TimerConfig | null}
  */
 export function normalizeStoredConfig(value) {
