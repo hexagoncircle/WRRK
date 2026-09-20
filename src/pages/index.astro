@@ -52,8 +52,8 @@ import {
     <main id="app" class="screen" data-status="idle">
       <h1 class="sr-only">WRRK</h1>
       <SoundControl class="sound" />
-      <fieldset class="settings">
-        <legend class="sr-only">Timer settings</legend>
+      <form class="settings">
+        <h2 class="sr-only">Timer settings</h2>
         <NumberField
           label="work"
           name="workSeconds"
@@ -80,7 +80,7 @@ import {
           max={ROUNDS_MAX}
           step={1}
         />
-      </fieldset>
+      </form>
       <TimerPlayer />
     </main>
     <script>
@@ -107,8 +107,6 @@ import {
   }
 
   .settings {
-    border: none;
-    padding: 0;
     margin: 0;
     margin-block-start: auto;
     flex: 0 1 auto;
@@ -143,7 +141,6 @@ import {
 
     .settings {
       flex-direction: column;
-      padding-block: unset;
       margin-block-start: 0;
     }
   }

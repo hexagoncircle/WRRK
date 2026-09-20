@@ -19,9 +19,11 @@ async function main() {
   const $app = document.querySelector("#app");
   const $player = document.querySelector("timer-player");
 
-  if (!($app instanceof HTMLElement) || !($player instanceof HTMLElement)) {
-    return;
-  }
+  if (!$app || !$player) return;
+
+  document.querySelector("form.settings")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+  });
 
   await Promise.all([
     customElements.whenDefined("number-field"),
