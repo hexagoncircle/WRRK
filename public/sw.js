@@ -1,7 +1,8 @@
-const CACHE_NAME = "wrrk-v2";
+const CACHE_NAME = "wrrk-v3";
 const FONT_HOSTS = new Set(["use.typekit.net", "p.typekit.net"]);
 const PRECACHE = [
   "/",
+  "/index.html",
   "/manifest.webmanifest",
   "/favicon.svg",
   "/favicon.ico",
@@ -21,15 +22,124 @@ function shouldHandle(url) {
 
 /**
  * @param {Cache} cache
+ * @param {RequestInfo} request
+ * @param {Response} response
+ */
+async function cachePut(cache, request, response) {
+  try {
+    await cache.put(request, response);
+  } catch {
+    // Quota exceeded / unsupported entries must never fail the response path.
+  }
+}
+
+/**
+ * @param {Request} request
+ */
+async function matchCached(request) {
+  const cached = await caches.match(request, { ignoreSearch: true });
+  if (cached) return cached;
+  if (request.mode === "navigate") {
+    return (
+      (await caches.match("/", { ignoreSearch: true })) ||
+      (await caches.match("/index.html", { ignoreSearch: true }))
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Collect same-origin /_astro module URLs referenced by a JS bundle.
+ * @param {string} source
+ * @param {string} basePath
+ */
+function findModuleUrls(source, basePath) {
+  /** @type {string[]} */
+  const urls = [];
+  const base = new URL(basePath, self.location.origin);
+
+  for (const match of source.matchAll(/from\s*["'](\.?\.?\/[^"']+)["']/g)) {
+    urls.push(new URL(match[1], base).pathname);
+  }
+  for (const match of source.matchAll(/["'`](\/_astro\/[^"'`]+)["'`]/g)) {
+    urls.push(match[1]);
+  }
+
+  return urls;
+}
+
+/**
+ * Precache HTML shell, linked assets, and the JS module graph.
+ * @param {Cache} cache
  * @param {string} path
  */
 async function precachePageAssets(cache, path) {
   const response = await fetch(path);
   if (!response.ok) return;
-  await cache.put(path, response.clone());
+
+  await cachePut(cache, path, response.clone());
+  if (path === "/index.html") await cachePut(cache, "/", response.clone());
+  if (path === "/") await cachePut(cache, "/index.html", response.clone());
+
   const html = await response.text();
-  const assets = [...html.matchAll(/(?:src|href)="(\/_astro\/[^"]+)"/g)].map((match) => match[1]);
-  await Promise.all(assets.map((asset) => cache.add(asset).catch(() => undefined)));
+  const linked = [...html.matchAll(/(?:src|href)="(\/_astro\/[^"]+)"/g)].map((match) => match[1]);
+  const queue = [...linked];
+  const seen = new Set();
+
+  while (queue.length) {
+    const assetPath = queue.pop();
+    if (!assetPath || seen.has(assetPath)) continue;
+    seen.add(assetPath);
+
+    try {
+      const assetResponse = await fetch(assetPath);
+      if (!assetResponse.ok) continue;
+      await cachePut(cache, assetPath, assetResponse.clone());
+
+      const contentType = assetResponse.headers.get("content-type") || "";
+      if (!assetPath.endsWith(".js") && !contentType.includes("javascript")) continue;
+
+      const source = await assetResponse.text();
+      queue.push(...findModuleUrls(source, assetPath));
+    } catch {
+      // Keep install resilient if an individual asset fails.
+    }
+  }
+}
+
+/**
+ * @param {Request} request
+ */
+async function revalidate(request) {
+  try {
+    const response = await fetch(request);
+    if (!response.ok || response.type === "opaque") return;
+    const cache = await caches.open(CACHE_NAME);
+    await cachePut(cache, request, response.clone());
+    if (request.mode === "navigate") {
+      await cachePut(cache, "/", response.clone());
+      await cachePut(cache, "/index.html", response.clone());
+    }
+  } catch {
+    // Ignore background refresh failures.
+  }
+}
+
+/**
+ * @param {Request} request
+ * @param {{ updateShell?: boolean }} [options]
+ */
+async function fetchAndCache(request, { updateShell = false } = {}) {
+  const response = await fetch(request);
+  if (response.ok && response.type !== "opaque") {
+    const cache = await caches.open(CACHE_NAME);
+    await cachePut(cache, request, response.clone());
+    if (updateShell) {
+      await cachePut(cache, "/", response.clone());
+      await cachePut(cache, "/index.html", response.clone());
+    }
+  }
+  return response;
 }
 
 self.addEventListener("install", (event) => {
@@ -59,22 +169,34 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (!shouldHandle(url)) return;
 
+  const isNavigate = request.mode === "navigate";
+  const isImmutableAsset = url.origin === self.location.origin && url.pathname.startsWith("/_astro/");
+
   event.respondWith(
     (async () => {
+      // Navigations + hashed assets: cache-first so iOS cold starts work offline.
+      if (isNavigate || isImmutableAsset) {
+        const cached = await matchCached(request);
+        if (cached) {
+          if (isNavigate) event.waitUntil(revalidate(request));
+          return cached;
+        }
+
+        try {
+          return await fetchAndCache(request, { updateShell: isNavigate });
+        } catch (error) {
+          const fallback = await matchCached(request);
+          if (fallback) return fallback;
+          throw error;
+        }
+      }
+
+      // Everything else (icons, fonts, manifest): network-first with cache fallback.
+      const cached = await matchCached(request);
       try {
-        const response = await fetch(request);
-        if (response.ok || response.type === "opaque") {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, response.clone());
-        }
-        return response;
+        return await fetchAndCache(request);
       } catch (error) {
-        const cached = await caches.match(request);
         if (cached) return cached;
-        if (request.mode === "navigate") {
-          const shell = (await caches.match("/")) || (await caches.match("/index.html"));
-          if (shell) return shell;
-        }
         throw error;
       }
     })(),

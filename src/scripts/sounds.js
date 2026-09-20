@@ -2,6 +2,8 @@
 let audioCtx = null;
 /** @type {GainNode | null} */
 let output = null;
+/** True after backgrounding until audio is confirmed running again. */
+let needsRevive = false;
 
 const MUTED_STORAGE_KEY = "wrrk:muted";
 
@@ -364,8 +366,25 @@ function noteToHz(note) {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
+/** @returns {boolean} */
+function hasLiveContext() {
+  return Boolean(audioCtx && output && audioCtx.state !== "closed");
+}
+
+function teardownAudio() {
+  const ctx = audioCtx;
+  audioCtx = null;
+  output = null;
+  if (!ctx) return;
+  try {
+    ctx.close();
+  } catch {}
+}
+
 function setupAudio() {
-  if (audioCtx && output) return true;
+  if (hasLiveContext()) return true;
+
+  teardownAudio();
 
   // Enable sound even if phone's silent switch is on.
   if (navigator.audioSession) {
@@ -383,24 +402,63 @@ function setupAudio() {
   return true;
 }
 
-/** @returns {Promise<boolean>} */
-async function resumeAudio() {
+/**
+ * iOS PWAs often leave AudioContext suspended/interrupted (or "zombie":
+ * state looks fine but rendering is dead). Prefer resume; recreate if needed.
+ * @param {{ forceRecreate?: boolean, bounce?: boolean }} [opts]
+ * @returns {Promise<boolean>}
+ */
+async function resumeAudio({ forceRecreate = false, bounce = false } = {}) {
+  if (forceRecreate) teardownAudio();
   if (!setupAudio() || !audioCtx) return false;
-  if (audioCtx.state === "running") return true;
+  if (audioCtx.state === "running" && !bounce) {
+    needsRevive = false;
+    return true;
+  }
+
+  // WebKit bug: after backgrounding, resume() alone can leave a zombie context.
+  // suspend() first forces a clean internal reset before resume.
   try {
+    await audioCtx.suspend();
     await audioCtx.resume();
   } catch {}
-  return audioCtx.state === "running";
+
+  if (audioCtx.state === "running") {
+    needsRevive = false;
+    return true;
+  }
+
+  // Closed or still unusable — rebuild the graph once.
+  if (!forceRecreate) return resumeAudio({ forceRecreate: true });
+  return false;
+}
+
+function onAppForeground() {
+  if (!audioCtx) return;
+  needsRevive = true;
+  // Always bounce through suspend→resume on return; iOS can report "running"
+  // while the context is actually dead after app switching.
+  void resumeAudio({ bounce: true });
 }
 
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && audioCtx) resumeAudio();
+  if (document.visibilityState === "hidden") {
+    needsRevive = true;
+    return;
+  }
+  onAppForeground();
 });
+
+// BFCache / PWA restore paths where visibilitychange alone is not enough.
+window.addEventListener("pageshow", onAppForeground);
+window.addEventListener("focus", onAppForeground);
 
 document.addEventListener(
   "pointerdown",
   () => {
-    if (audioCtx && audioCtx.state !== "running") resumeAudio();
+    if (needsRevive || !audioCtx || audioCtx.state !== "running") {
+      void resumeAudio({ bounce: needsRevive });
+    }
   },
   { passive: true },
 );
@@ -581,7 +639,7 @@ export function play(name, opts) {
   const recipe = RECIPES[name];
   if (!recipe) return;
 
-  resumeAudio().then((ok) => {
+  resumeAudio({ bounce: needsRevive }).then((ok) => {
     if (!ok || !audioCtx || !output) return;
     renderRecipe(audioCtx, output, recipe, audioCtx.currentTime + LOOKAHEAD, opts);
   });
