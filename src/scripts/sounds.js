@@ -9,12 +9,21 @@ const MUTED_STORAGE_KEY = "wrrk:muted";
 
 /** @returns {boolean} */
 function loadMutedPreference() {
-  return localStorage.getItem(MUTED_STORAGE_KEY) === "true";
+  try {
+    return localStorage.getItem(MUTED_STORAGE_KEY) === "true";
+  } catch {
+    // Private mode / blocked storage must not break module init.
+    return false;
+  }
 }
 
 /** @param {boolean} value */
 function saveMutedPreference(value) {
-  localStorage.setItem(MUTED_STORAGE_KEY, String(value));
+  try {
+    localStorage.setItem(MUTED_STORAGE_KEY, String(value));
+  } catch {
+    // Best-effort; quota / private mode may reject writes.
+  }
 }
 
 let muted = loadMutedPreference();
