@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { phasePercents } from "./progress-ring.js";
+import { phasePercents } from "../src/scripts/progress-ring.js";
 
 describe("phasePercents", () => {
   it("returns zeros when both sides are empty", () => {

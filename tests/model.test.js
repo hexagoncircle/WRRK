@@ -10,7 +10,7 @@ import {
   toPhaseType,
   toPhases,
   totalWorkoutSeconds,
-} from "./model.js";
+} from "../src/scripts/model.js";
 
 describe("createConfig", () => {
   it("returns defaults for empty input", () => {

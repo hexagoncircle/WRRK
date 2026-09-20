@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { COUNTDOWN_SECONDS, PREPARE_SECONDS } from "./model.js";
-import { STATUS, TimerEngine } from "./engine.js";
+import { COUNTDOWN_SECONDS, PREPARE_SECONDS } from "../src/scripts/model.js";
+import { STATUS, TimerEngine } from "../src/scripts/engine.js";
 
 /** Minimal Worker stub — engine only needs construct + postMessage + terminate. */
 class StubWorker {

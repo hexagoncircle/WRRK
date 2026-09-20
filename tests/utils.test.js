@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { clamp, clampNumber, formatClock, formatDurationAttr, formatMSS } from "./utils.js";
+import { clamp, clampNumber, formatClock, formatDurationAttr, formatMSS } from "../src/scripts/utils.js";
 
 describe("clamp", () => {
   it("clamps within an inclusive integer range", () => {
