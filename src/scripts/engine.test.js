@@ -37,7 +37,7 @@ describe("TimerEngine", () => {
     else globalThis.Worker = previousWorker;
   });
 
-  /** Advance past a deadline — Temporal second totals can leave a sub-ms remainder. */
+  /** Advance past a deadline so the boundary timer has fired. */
   function advance(ms) {
     mock.timers.tick(ms + 1);
   }
@@ -73,8 +73,8 @@ describe("TimerEngine", () => {
     mock.timers.tick(3000);
     engine.pause();
     assert.equal(engine.status, STATUS.paused);
-    assert.ok(engine.remaining);
-    const pausedSeconds = engine.remaining.total("seconds");
+    assert.ok(engine.remaining != null);
+    const pausedSeconds = engine.remaining;
     assert.ok(pausedSeconds > 6.5 && pausedSeconds < 7.5);
 
     engine.start();
@@ -118,6 +118,6 @@ describe("TimerEngine", () => {
     engine.reset();
     assert.equal(engine.status, STATUS.idle);
     assert.equal(engine.phaseIndex, -1);
-    assert.equal(engine.phaseEndInstant, null);
+    assert.equal(engine.phaseEndMs, null);
   });
 });

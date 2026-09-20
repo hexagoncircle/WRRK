@@ -1,4 +1,3 @@
-import { Temporal } from "@js-temporal/polyfill";
 import { cancelDigitDance, playCountdown, playDigitDance } from "./digit-dance.js";
 import { STATUS, TimerEngine } from "./engine.js";
 import { createTimeout, formatMSS } from "./utils.js";
@@ -168,12 +167,12 @@ export function enhancePlayer(root, options) {
   };
 
   const secondsUntilPhaseEnd = () => {
-    if (!engine?.phaseEndInstant) return 0;
-    return Temporal.Now.instant().until(engine.phaseEndInstant).total("seconds");
+    if (engine?.phaseEndMs == null) return 0;
+    return (engine.phaseEndMs - Date.now()) / 1000;
   };
 
   const syncCountdownTimeline = () => {
-    if (!countdownTimeline || !engine?.phaseEndInstant) return;
+    if (!countdownTimeline || engine?.phaseEndMs == null) return;
     if (!isStartup()) return;
     const left = secondsUntilPhaseEnd();
     if (engine.status === STATUS.preparing) {
@@ -202,7 +201,7 @@ export function enhancePlayer(root, options) {
   };
 
   const refreshTitle = () => {
-    if (!document.hidden || !isActive() || !engine?.phaseEndInstant) {
+    if (!document.hidden || !isActive() || engine?.phaseEndMs == null) {
       if (document.title !== defaultTitle) document.title = defaultTitle;
       return;
     }
@@ -308,8 +307,8 @@ export function enhancePlayer(root, options) {
       countdownTimeline?.pause();
       setPlaybackLabel(LABEL.resume);
       phaseLabel.set(LABEL.paused);
-      if (nextEngine.currentPhase && nextEngine.remaining) {
-        syncRingProgress(nextEngine.currentPhase, nextEngine.remaining.total("seconds"), {
+      if (nextEngine.currentPhase && nextEngine.remaining != null) {
+        syncRingProgress(nextEngine.currentPhase, nextEngine.remaining, {
           settle: true,
         });
       }

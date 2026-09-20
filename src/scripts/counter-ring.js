@@ -18,10 +18,10 @@ export function createCounterRing(root) {
   let count = clamp(root.style.getPropertyValue("--count"), 1, Number.MAX_SAFE_INTEGER);
   let announcedRound = 0;
   const announceTimer = createTimeout();
+  const baseGap =
+    Number.parseFloat(getComputedStyle(root).getPropertyValue("--ring-gap")) || 0;
 
   function geometry(n) {
-    const baseGap =
-      Number.parseFloat(getComputedStyle(root).getPropertyValue("--ring-gap")) || 0;
     const segment = PATH_LENGTH / n;
     const linecap = n <= ROUND_LINECAP_THRESHOLD ? "round" : "butt";
 
