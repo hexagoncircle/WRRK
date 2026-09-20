@@ -63,7 +63,7 @@ async function main() {
     onRunningChange: setFieldsDisabled,
   });
 
-  $app.addEventListener("number-field-change", () => {
+  $app.addEventListener("number-field:change", () => {
     const config = readConfig();
     saveConfig(config);
     player.softReset(config);

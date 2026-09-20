@@ -354,7 +354,7 @@ const roleDescription = duration ? "Duration" : "Number field";
 
       if (!silent && changed) {
         this.dispatchEvent(
-          new CustomEvent("number-field-change", {
+          new CustomEvent("number-field:change", {
             detail: { name: this.#fieldName, value: clamped },
             bubbles: true,
           }),
