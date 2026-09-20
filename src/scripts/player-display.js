@@ -34,8 +34,9 @@ export function createPlayerDisplay(els) {
     const values = [mins, secs[0], secs[1]];
 
     [...digits].forEach((el, i) => {
+      if (!(el instanceof Element)) return;
       const digit = values[i] ?? "0";
-      if (el instanceof HTMLElement && el.dataset.digit !== digit) {
+      if (el.dataset.digit !== digit) {
         el.dataset.digit = digit;
       }
     });
