@@ -1,8 +1,7 @@
 const HOLD_MS = 2000;
 const LOGO_HOLD_MS = 800;
 const LOGO_LEAD_MS = 600;
-const STAGGER_MS = 0;
-const REVEAL_MS = 0.5;
+const LOTTIE_TIMEOUT_MS = 8000;
 
 /**
  * @param {number} ms
@@ -39,12 +38,14 @@ function revealImmediate(intro, app, onReveal) {
 }
 
 /**
+ * Play a panel's Lottie once. Optional onNearEnd fires LOGO_LEAD_MS before complete
+ * (and again-safe on finish) so the logotype can lead the last character.
  * @param {HTMLElement} panel
  * @param {typeof import('lottie-web/build/player/lottie_light.js').default} lottie
- * @param {{ nearEndMs?: number, onNearEnd?: () => void }} [options]
+ * @param {(() => void) | undefined} [onNearEnd]
  * @returns {Promise<{ destroy: () => void }>}
  */
-function playLottieOnce(panel, lottie, { nearEndMs = 0, onNearEnd } = {}) {
+function playAnimation(panel, lottie, onNearEnd) {
   const src = panel.dataset.src;
   const figure = panel.querySelector(".intro-figure");
   if (!src || !(figure instanceof HTMLElement)) {
@@ -70,7 +71,9 @@ function playLottieOnce(panel, lottie, { nearEndMs = 0, onNearEnd } = {}) {
       },
     });
 
+    let settled = false;
     let nearEndFired = false;
+
     const fireNearEnd = () => {
       if (nearEndFired || !onNearEnd) return;
       nearEndFired = true;
@@ -78,9 +81,12 @@ function playLottieOnce(panel, lottie, { nearEndMs = 0, onNearEnd } = {}) {
     };
 
     const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
       anim.removeEventListener("complete", finish);
       anim.removeEventListener("data_failed", finish);
-      anim.removeEventListener("enterFrame", onFrame);
+      if (onNearEnd) anim.removeEventListener("enterFrame", onFrame);
       fireNearEnd();
       resolve({
         destroy: () => {
@@ -94,14 +100,15 @@ function playLottieOnce(panel, lottie, { nearEndMs = 0, onNearEnd } = {}) {
     };
 
     const onFrame = () => {
-      if (!onNearEnd || nearEndMs <= 0) return;
       const remainingMs = ((anim.totalFrames - anim.currentFrame) / anim.frameRate) * 1000;
-      if (remainingMs <= nearEndMs) fireNearEnd();
+      if (remainingMs <= LOGO_LEAD_MS) fireNearEnd();
     };
+
+    const timeoutId = window.setTimeout(finish, LOTTIE_TIMEOUT_MS);
 
     anim.addEventListener("complete", finish);
     anim.addEventListener("data_failed", finish);
-    anim.addEventListener("enterFrame", onFrame);
+    if (onNearEnd) anim.addEventListener("enterFrame", onFrame);
     anim.addEventListener("DOMLoaded", () => {
       // Swap still SVG for the animated one so they never stack/duplicate.
       figure.querySelectorAll("img").forEach((img) => img.remove());
@@ -141,13 +148,20 @@ async function showLogotype(intro, animate) {
 async function slideOutToTimer(intro, app, players = [], onReveal) {
   const { animate } = await import("motion");
 
+  intro.classList.add("is-exiting");
   onReveal?.();
   finishIntro();
   app.removeAttribute("inert");
   app.removeAttribute("aria-hidden");
 
-  await animate(intro, { y: ["0%", "-100%"] }, { duration: REVEAL_MS, ease: [0.4, 0, 0.2, 1] })
-    .finished;
+  await animate(
+    intro,
+    { y: ["0%", "-100%"] },
+    {
+      duration: 0.2,
+      ease: [0.4, 0, 0.2, 1],
+    },
+  ).finished;
 
   for (const player of players) player.destroy();
   intro.remove();
@@ -187,7 +201,7 @@ export async function playIntro(
     return;
   }
 
-  // Still SVGs are in the template; stagger-reveal each panel (also the reduced-motion graphic).
+  // Still SVGs are in the template; show each panel (also the reduced-motion graphic).
   if (prefersReducedMotion()) {
     for (const panel of panels) panel.classList.add("is-shown");
     await sleep(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
@@ -220,19 +234,14 @@ export async function playIntro(
     logoPromise ??= showLogotype(intro, animate);
   };
 
-  // Instant staggered reveal; each Lottie starts as soon as its cell is on screen.
+  // Reveal panels together; each Lottie starts as soon as its cell is on screen.
   // Logotype starts LOGO_LEAD_MS before the last character finishes.
   /** @type {Array<{ destroy: () => void }>} */
+  const lastPanel = panels.at(-1);
   const players = await Promise.all(
-    panels.map(async (panel, index) => {
-      if (index > 0) await sleep(index * STAGGER_MS);
+    panels.map((panel) => {
       panel.classList.add("is-shown");
-      const isLast = index === panels.length - 1;
-      return playLottieOnce(
-        panel,
-        lottie,
-        isLast ? { nearEndMs: LOGO_LEAD_MS, onNearEnd: ensureLogo } : undefined,
-      );
+      return playAnimation(panel, lottie, panel === lastPanel ? ensureLogo : undefined);
     }),
   );
 

@@ -104,6 +104,12 @@ import {
   html[data-intro="pending"] #app {
     pointer-events: none;
   }
+
+  /* Offline / head script sets done before JS removes #intro — don't flash the overlay.
+     .is-exiting keeps the curtain visible while it slides away after finishIntro(). */
+  html[data-intro="done"] #intro:not(.is-exiting) {
+    display: none;
+  }
 </style>
 
 <style>

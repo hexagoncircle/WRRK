@@ -1,21 +1,14 @@
 ---
-const characters = [
-  { id: "jumprope", label: "Jump rope" },
-  { id: "run", label: "Run" },
-  { id: "stretch", label: "Stretch" },
-  { id: "weights", label: "Weights" },
-] as const;
+const characters = ["jumprope", "run", "stretch", "weights"] as const;
 ---
 
 <div id="intro" class="intro-screen" aria-hidden="true">
   <div class="intro-grid">
     {
-      characters.map(({ id, label }) => (
+      characters.map((id) => (
         <div
           class="intro-panel"
-          data-character={id}
           data-src={`/wrrk-${id}.json`}
-          data-label={label}
         >
           <div class="intro-figure">
             <img
