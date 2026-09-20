@@ -1,21 +1,41 @@
-import { enhanceNumberFields } from "./number-field.js";
-import { enhancePlayer } from "./player.js";
 import { createConfig } from "./model.js";
 import { loadConfig, saveConfig } from "./storage.js";
 
-function main() {
-  const $appRoot = document.querySelector("[data-app-root]");
-  const $player = document.querySelector("[data-player]");
+/**
+ * @typedef {HTMLElement & { name: string, value: number, disabled: boolean }} NumberFieldEl
+ */
 
-  if (!($appRoot instanceof HTMLElement) || !($player instanceof HTMLElement)) {
+/**
+ * @typedef {HTMLElement & {
+ *   enhance: (options: {
+ *     getConfig: () => import('./model.js').TimerConfig,
+ *     attrsRoot?: HTMLElement,
+ *     onRunningChange?: (running: boolean) => void,
+ *   }) => Promise<{ softReset: (config?: import('./model.js').TimerConfig, opts?: { lightUp?: boolean }) => void }>,
+ * }} TimerPlayerEl
+ */
+
+async function main() {
+  const $app = document.querySelector("#app");
+  const $player = document.querySelector("timer-player");
+
+  if (!($app instanceof HTMLElement) || !($player instanceof HTMLElement)) {
     return;
   }
-  const fields = enhanceNumberFields($appRoot);
+
+  await Promise.all([
+    customElements.whenDefined("number-field"),
+    customElements.whenDefined("timer-player"),
+  ]);
+
+  /** @type {NumberFieldEl[]} */
+  const fields = [...$app.querySelectorAll("number-field")];
   const fieldByName = new Map(fields.map((field) => [field.name, field]));
 
   const initial = loadConfig();
   for (const [name, value] of Object.entries(initial)) {
-    fieldByName.get(name)?.setValue(value);
+    const field = fieldByName.get(name);
+    if (field) field.value = value;
   }
 
   /**
@@ -23,9 +43,9 @@ function main() {
    */
   const readConfig = () =>
     createConfig({
-      workSeconds: fieldByName.get("workSeconds")?.getValue(),
-      restSeconds: fieldByName.get("restSeconds")?.getValue(),
-      rounds: fieldByName.get("rounds")?.getValue(),
+      workSeconds: fieldByName.get("workSeconds")?.value,
+      restSeconds: fieldByName.get("restSeconds")?.value,
+      rounds: fieldByName.get("rounds")?.value,
     });
 
   /**
@@ -33,17 +53,17 @@ function main() {
    */
   const setFieldsDisabled = (disabled) => {
     for (const field of fields) {
-      field.setDisabled(disabled);
+      field.disabled = disabled;
     }
   };
 
-  const player = enhancePlayer($player, {
+  const player = await /** @type {TimerPlayerEl} */ ($player).enhance({
     getConfig: readConfig,
-    attrsRoot: $appRoot,
+    attrsRoot: $app,
     onRunningChange: setFieldsDisabled,
   });
 
-  $appRoot.addEventListener("number-field-change", () => {
+  $app.addEventListener("number-field-change", () => {
     const config = readConfig();
     saveConfig(config);
     player.softReset(config);
@@ -51,7 +71,13 @@ function main() {
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", main, { once: true });
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      void main();
+    },
+    { once: true },
+  );
 } else {
-  main();
+  void main();
 }

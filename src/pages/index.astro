@@ -49,11 +49,11 @@ import {
     <link rel="stylesheet" href="https://use.typekit.net/yys8fwy.css" />
   </head>
   <body>
-    <main class="screen" data-app-root data-status="idle">
+    <main id="app" class="screen" data-status="idle">
       <h1 class="sr-only">WRRK</h1>
       <SoundControl class="sound" />
-      <fieldset class="setup">
-        <legend class="sr-only">Setup</legend>
+      <fieldset class="settings">
+        <legend class="sr-only">Timer settings</legend>
         <NumberField
           label="work"
           name="workSeconds"
@@ -106,7 +106,7 @@ import {
     user-select: none;
   }
 
-  .setup {
+  .settings {
     border: none;
     padding: 0;
     margin: 0;
@@ -117,12 +117,12 @@ import {
     justify-content: space-between;
     transition: color 300ms ease-out;
 
-    &:focus-within :global(.number-field:not(:focus-within)) {
+    &:focus-within :global(number-field:not(:focus-within)) {
       color: var(--color-fg-muted);
     }
   }
 
-  .screen:not([data-status="idle"]) > .setup {
+  .screen:not([data-status="idle"]) > .settings {
     color: var(--color-fg-muted);
     pointer-events: none;
     user-select: none;
@@ -130,13 +130,8 @@ import {
 
   .sound {
     position: fixed;
-    top: 1em;
-    right: 0.75em;
-
-    @media (width >= 30rem) {
-      top: 0.4em;
-      right: 0.4em;
-    }
+    top: 1rem;
+    right: 0.75rem;
   }
 
   @media (min-aspect-ratio: 6/5) {
@@ -146,7 +141,7 @@ import {
       margin-block: auto;
     }
 
-    .setup {
+    .settings {
       flex-direction: column;
       padding-block: unset;
       margin-block-start: 0;
@@ -154,7 +149,7 @@ import {
   }
 
   @media (width <= 24rem) or (height <= 28rem) {
-    .setup {
+    .settings {
       flex-direction: column;
     }
   }
