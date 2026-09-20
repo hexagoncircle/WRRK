@@ -8,11 +8,199 @@ interface Props {
 const { label = LABEL.idle } = Astro.props;
 ---
 
-<div class="phase" aria-live="polite" aria-label={label}>
+<phase-label class="phase" aria-live="polite" aria-label={label}>
   <div class="phase-track" aria-hidden="true">
     <div class="phase-label">{label}</div>
   </div>
-</div>
+</phase-label>
+
+<script>
+  import { animate, steps } from "motion";
+  import { LABEL } from "../scripts/labels.js";
+  import { toPhaseType } from "../scripts/model.js";
+
+  const DURATION = 0.2;
+  const LINE = "1lh";
+  const SLIDE_DOWN = new Set([LABEL.prepare, LABEL.paused]);
+  /** Shared display copy — LABEL.start and LABEL.idle are both "Start". */
+  const START_COPY = new Set([LABEL.start, LABEL.idle]);
+
+  /**
+   * Light-DOM phase label with slide transitions. Markup comes from Astro.
+   */
+  class PhaseLabelElement extends HTMLElement {
+    #track: HTMLElement | null = null;
+    #label: HTMLElement | null = null;
+    #text = "";
+    /** @type {"work" | "rest" | null} */
+    #tone: "work" | "rest" | null = null;
+    /** @type {{ stop: () => void } | null} */
+    #active: { stop: () => void } | null = null;
+    #ready = false;
+
+    connectedCallback() {
+      if (this.#ready) return;
+
+      this.#track = this.#ensureTrack();
+      this.#track.setAttribute("aria-hidden", "true");
+      this.#label = this.#track.querySelector(".phase-label");
+      this.#text = this.#label?.textContent ?? "";
+      this.#tone = toPhaseType(this.#label?.dataset.tone ?? this.dataset.tone);
+
+      if (this.#text) this.setAttribute("aria-label", this.#text);
+      this.#ready = true;
+    }
+
+    getText() {
+      return this.#text;
+    }
+
+    /**
+     * @param {string} next
+     * @param {{ tone?: string | null, animate?: boolean, from?: "bottom" | "top" }} [opts]
+     */
+    set(next: string, { tone: nextTone = null, animate: shouldAnimate = true, from }: {
+      tone?: string | null;
+      animate?: boolean;
+      from?: "bottom" | "top";
+    } = {}) {
+      if (!this.#ready) this.connectedCallback();
+
+      const resolvedTone = toPhaseType(nextTone);
+      if (next === this.#text && resolvedTone === this.#tone && !this.#active) return;
+
+      if (next === LABEL.complete) {
+        this.#snap(next, resolvedTone);
+        return;
+      }
+
+      if (START_COPY.has(next) && (this.#text === LABEL.complete || this.#text === LABEL.paused)) {
+        this.#snap(next, resolvedTone);
+        return;
+      }
+
+      if (shouldAnimate && this.#text && next !== this.#text) {
+        const direction = from ?? (SLIDE_DOWN.has(next) ? "top" : "bottom");
+        this.#slide(next, resolvedTone, direction);
+        return;
+      }
+
+      this.#snap(next, resolvedTone);
+    }
+
+    #ensureTrack() {
+      const existing = this.querySelector(".phase-track");
+      if (existing instanceof HTMLElement) return existing;
+
+      const el = document.createElement("div");
+      el.className = "phase-track";
+      el.setAttribute("aria-hidden", "true");
+      const label = this.querySelector(".phase-label");
+      if (label) el.append(label);
+      else if (this.textContent?.trim()) {
+        const next = document.createElement("div");
+        next.className = "phase-label";
+        next.textContent = this.textContent.trim();
+        el.append(next);
+      }
+      this.replaceChildren(el);
+      return el;
+    }
+
+    /** @param {string} next @param {"work" | "rest" | null} nextTone */
+    #makeLabel(next: string, nextTone: "work" | "rest" | null) {
+      const el = document.createElement("div");
+      el.className = "phase-label";
+      el.textContent = next;
+      if (nextTone) el.dataset.tone = nextTone;
+      return el;
+    }
+
+    /** @param {"work" | "rest" | null} nextTone */
+    #applyRootTone(nextTone: "work" | "rest" | null) {
+      if (nextTone) this.dataset.tone = nextTone;
+      else delete this.dataset.tone;
+    }
+
+    /** @param {string} next @param {"work" | "rest" | null} nextTone */
+    #snap(next: string, nextTone: "work" | "rest" | null) {
+      const track = this.#track ?? this.#ensureTrack();
+      this.#track = track;
+      this.#active?.stop();
+      this.#active = null;
+      track.removeAttribute("style");
+      if (!this.#label) this.#label = this.#makeLabel(next, nextTone);
+      else {
+        this.#label.textContent = next;
+        if (nextTone) this.#label.dataset.tone = nextTone;
+        else delete this.#label.dataset.tone;
+      }
+      track.replaceChildren(this.#label);
+      this.replaceChildren(track);
+      this.setAttribute("aria-label", next);
+      this.#applyRootTone(nextTone);
+      this.#text = next;
+      this.#tone = nextTone;
+    }
+
+    /**
+     * @param {string} next
+     * @param {"work" | "rest" | null} nextTone
+     * @param {"bottom" | "top"} [from]
+     */
+    #slide(next: string, nextTone: "work" | "rest" | null, from: "bottom" | "top" = "bottom") {
+      if (!this.#label) {
+        this.#snap(next, nextTone);
+        return;
+      }
+
+      const track = this.#track ?? this.#ensureTrack();
+      this.#track = track;
+      this.#active?.stop();
+
+      const outgoing = this.#label;
+      if (this.#tone) outgoing.dataset.tone = this.#tone;
+      const incoming = this.#makeLabel(next, nextTone);
+      const fromTop = from === "top";
+
+      track.replaceChildren(...(fromTop ? [incoming, outgoing] : [outgoing, incoming]));
+      if (fromTop) track.style.transform = `translateY(-${LINE})`;
+      else track.removeAttribute("style");
+      this.setAttribute("aria-label", next);
+      delete this.dataset.tone;
+
+      this.#text = next;
+      this.#tone = nextTone;
+      this.#label = incoming;
+
+      const controls = animate(
+        track,
+        { y: fromTop ? [`-${LINE}`, 0] : [0, `-${LINE}`] },
+        { duration: DURATION, ease: steps(3) },
+      );
+      this.#active = controls;
+
+      controls.then(
+        () => {
+          if (this.#active !== controls) return;
+          this.#active = null;
+          outgoing.remove();
+          track.removeAttribute("style");
+          this.#applyRootTone(nextTone);
+        },
+        () => {
+          if (this.#active !== controls) return;
+          this.#active = null;
+          this.#snap(next, nextTone);
+        },
+      );
+    }
+  }
+
+  if (!customElements.get("phase-label")) {
+    customElements.define("phase-label", PhaseLabelElement);
+  }
+</script>
 
 <style>
   .phase {

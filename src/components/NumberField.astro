@@ -20,40 +20,39 @@ const inputId = `number-field-${name}`;
 const roleDescription = duration ? "Duration" : "Number field";
 ---
 
-<div
+<number-field
   class="number-field"
-  data-number-field
-  data-name={name}
-  data-min={min}
-  data-max={max}
-  data-step={step}
-  data-duration={duration ? "true" : "false"}
+  name={name}
+  min={min}
+  max={max}
+  step={step}
+  duration={duration || undefined}
 >
   <label class="label" for={inputId}>
     <div class="wrapper">
       <button type="button" class="decrement" aria-label={`Decrease ${label}`} tabindex="-1">
         <Icon name="minus" aria-hidden="true" />
       </button>
-      <div class="input-wrapper">
-        <input
-          id={inputId}
-          class="input"
-          type="text"
-          name={name}
-          value={inputValue}
-          inputmode="numeric"
-          autocomplete="off"
-          spellcheck="false"
-          aria-roledescription={roleDescription}
-        />
-      </div>
+      <input
+        id={inputId}
+        class="input"
+        type="text"
+        name={name}
+        value={inputValue}
+        inputmode="numeric"
+        enterkeyhint="done"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
+        aria-roledescription={roleDescription}
+      />
       <button type="button" class="increment" aria-label={`Increase ${label}`} tabindex="-1">
         <Icon name="plus" aria-hidden="true" />
       </button>
     </div>
     <span class="text">{label}</span>
   </label>
-</div>
+</number-field>
 
 <style>
   .number-field {
@@ -125,6 +124,8 @@ const roleDescription = duration ? "Duration" : "Number field";
     font-size: 0.9em;
     z-index: 1;
     pointer-events: none;
+    /* Skip the mobile double-tap-zoom delay so steppers feel instant. */
+    touch-action: manipulation;
 
     &:active {
       transform: translateY(1px);
@@ -150,3 +151,448 @@ const roleDescription = duration ? "Duration" : "Number field";
     left: 100%;
   }
 </style>
+
+<script>
+  import { play } from "../scripts/sounds.js";
+  import { clamp, formatClock, formatMSS } from "../scripts/utils.js";
+
+  /** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
+  function secondsToMss(totalSeconds: number) {
+    const safe = Math.max(0, Math.trunc(totalSeconds));
+    return Math.floor(safe / 60) * 100 + (safe % 60);
+  }
+
+  function splitMss(mss: number) {
+    const safe = Math.max(0, Math.trunc(mss));
+    return [Math.floor(safe / 100), safe % 100] as const;
+  }
+
+  /** Decode an M SS digit buffer to total seconds (e.g. 345 → 225). */
+  function mssToSeconds(mss: number) {
+    const [minutes, seconds] = splitMss(mss);
+    return minutes * 60 + seconds;
+  }
+
+  /** Format digit buffer as M:SS without normalizing seconds (e.g. 569 → "5:69"). */
+  function formatMssBuffer(mss: number) {
+    const [minutes, seconds] = splitMss(mss);
+    return formatClock(minutes, seconds);
+  }
+
+  function parseDurationInput(text: string) {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
+    if (!match) return null;
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    if (seconds > 59) return null;
+    return minutes * 60 + seconds;
+  }
+
+  function isDeleteInputType(inputType: string) {
+    return inputType === "deleteContentBackward" || inputType === "deleteContentForward";
+  }
+
+  /**
+   * Keep a focused input visible above the on-screen keyboard.
+   * iOS Safari often skips its avoidance scroll when focus handlers mutate
+   * value/selection. Wait for the keyboard to change the visual viewport before
+   * scrolling — an immediate scrollIntoView races the keypad and flashes layout.
+   */
+  function revealFocusedInput(input: HTMLInputElement) {
+    const vv = window.visualViewport;
+
+    const run = () => {
+      if (document.activeElement !== input) return;
+
+      const rect = input.getBoundingClientRect();
+      const viewTop = vv?.offsetTop ?? 0;
+      const viewBottom = viewTop + (vv?.height ?? window.innerHeight);
+      const pad = 12;
+
+      // Already fully visible in the visual viewport — don't fight the browser.
+      if (rect.top >= viewTop + pad && rect.bottom <= viewBottom - pad) {
+        return;
+      }
+
+      input.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+
+    if (!vv) {
+      requestAnimationFrame(run);
+      return;
+    }
+
+    const onViewportChange = () => run();
+    vv.addEventListener("resize", onViewportChange);
+    vv.addEventListener("scroll", onViewportChange);
+
+    // Fallback when the keyboard is already open or resize never fires.
+    const fallback = window.setTimeout(run, 300);
+
+    input.addEventListener(
+      "blur",
+      () => {
+        vv.removeEventListener("resize", onViewportChange);
+        vv.removeEventListener("scroll", onViewportChange);
+        window.clearTimeout(fallback);
+      },
+      { once: true },
+    );
+  }
+
+  const supportsBeforeInput =
+    typeof InputEvent !== "undefined" && "inputType" in InputEvent.prototype;
+
+  /**
+   * Light-DOM number / duration field. Markup comes from Astro; this element
+   * wires steppers, digit entry, and value sync on connect.
+   */
+  class NumberFieldElement extends HTMLElement {
+    #input: HTMLInputElement | null = null;
+    #decrement: HTMLButtonElement | null = null;
+    #increment: HTMLButtonElement | null = null;
+
+    #min = 0;
+    #max = 0;
+    #step = 1;
+    #isDuration = false;
+    #fieldName = "";
+
+    #value = 0;
+    #digitBuffer = 0;
+    #draftText = "";
+    /** Next digit replaces the buffer (select-to-type a new value). */
+    #replaceOnNextDigit = false;
+    #ready = false;
+
+    static get observedAttributes() {
+      return ["disabled"];
+    }
+
+    connectedCallback() {
+      if (this.#ready) return;
+
+      const input = this.querySelector(".input");
+      const decrement = this.querySelector(".decrement");
+      const increment = this.querySelector(".increment");
+      if (
+        !(input instanceof HTMLInputElement) ||
+        !(decrement instanceof HTMLButtonElement) ||
+        !(increment instanceof HTMLButtonElement)
+      ) {
+        return;
+      }
+
+      this.#input = input;
+      this.#decrement = decrement;
+      this.#increment = increment;
+      this.#min = Number(this.getAttribute("min"));
+      this.#max = Number(this.getAttribute("max"));
+      this.#step = Number(this.getAttribute("step")) || 1;
+      this.#isDuration = this.hasAttribute("duration");
+      this.#fieldName = this.getAttribute("name") ?? input.name;
+
+      this.#value = this.#isDuration
+        ? clamp(parseDurationInput(input.value) ?? this.#min, this.#min, this.#max)
+        : clamp(Number.parseInt(input.value, 10), this.#min, this.#max);
+
+      this.#wireSteppers();
+      this.#wireFocusAndKeys();
+      if (this.#isDuration) this.#wireDurationEditing();
+      else this.#wirePlainEditing();
+
+      this.#setValue(this.#value, { silent: true });
+      this.#ready = true;
+    }
+
+    attributeChangedCallback(name: string) {
+      if (name === "disabled") this.#syncDisabled();
+    }
+
+    get name() {
+      return this.getAttribute("name") ?? "";
+    }
+
+    get value() {
+      return this.#value;
+    }
+
+    set value(next: number) {
+      this.#setValue(next, { silent: true });
+    }
+
+    get disabled() {
+      return this.hasAttribute("disabled");
+    }
+
+    set disabled(value: boolean) {
+      if (value) this.setAttribute("disabled", "");
+      else this.removeAttribute("disabled");
+    }
+
+    #formatValue(next: number) {
+      return this.#isDuration ? formatMSS(next) : String(next);
+    }
+
+    #syncDisabled() {
+      const disabled = this.disabled;
+      if (this.#decrement) this.#decrement.disabled = disabled;
+      if (this.#increment) this.#increment.disabled = disabled;
+      if (this.#input) this.#input.disabled = disabled;
+    }
+
+    #setValue(next: number, { silent = false }: { silent?: boolean } = {}) {
+      if (!this.#input) return;
+
+      const clamped = clamp(next, this.#min, this.#max);
+      const changed = clamped !== this.#value;
+      this.#value = clamped;
+      this.#digitBuffer = secondsToMss(clamped);
+      this.#draftText = String(clamped);
+      this.#input.value = this.#formatValue(clamped);
+      this.#syncDisabled();
+
+      if (!silent && changed) {
+        this.dispatchEvent(
+          new CustomEvent("number-field-change", {
+            detail: { name: this.#fieldName, value: clamped },
+            bubbles: true,
+          }),
+        );
+      }
+    }
+
+    /** Empty/invalid drafts keep the previous value. Duration allows unnormalized seconds. */
+    #readDraft() {
+      if (this.#isDuration) return mssToSeconds(this.#digitBuffer);
+      const parsed = Number.parseInt(this.#draftText || this.#input?.value || "", 10);
+      return Number.isFinite(parsed) ? parsed : this.#value;
+    }
+
+    #armReplace() {
+      this.#replaceOnNextDigit = true;
+      if (this.#isDuration && this.#input) {
+        this.#input.value = formatMssBuffer(this.#digitBuffer);
+      }
+    }
+
+    #inputFocused() {
+      return document.activeElement === this.#input;
+    }
+
+    #isFullySelected() {
+      const input = this.#input;
+      return (
+        input != null &&
+        input.selectionStart === 0 &&
+        input.selectionEnd === input.value.length
+      );
+    }
+
+    /**
+     * Commit draft, then step — single change event.
+     * Clamps to the boundary instead of refusing the step, so a step that would
+     * overshoot min/max (e.g. value 9, step 3, max 10) still lands on the edge
+     * rather than doing nothing.
+     */
+    #stepBy(delta: number) {
+      if (this.disabled) return;
+      const current = this.#readDraft();
+      const next = clamp(current + delta, this.#min, this.#max);
+      if (next === current) return;
+      this.#setValue(next);
+      play("press");
+      if (this.#inputFocused()) this.#armReplace();
+    }
+
+    #wireSteppers() {
+      const preserveFocus = (event: Event) => {
+        event.preventDefault();
+      };
+      this.#decrement?.addEventListener("pointerdown", preserveFocus);
+      this.#increment?.addEventListener("pointerdown", preserveFocus);
+      this.#decrement?.addEventListener("click", () => this.#stepBy(-this.#step));
+      this.#increment?.addEventListener("click", () => this.#stepBy(this.#step));
+    }
+
+    #wireFocusAndKeys() {
+      const input = this.#input;
+      if (!input) return;
+
+      input.addEventListener("focus", () => {
+        if (this.#isDuration) {
+          this.#digitBuffer = secondsToMss(this.#value);
+          input.value = formatMssBuffer(this.#digitBuffer);
+        } else {
+          this.#draftText = String(this.#value);
+          input.value = this.#draftText;
+        }
+        this.#replaceOnNextDigit = true;
+        requestAnimationFrame(() => {
+          if (this.#inputFocused()) revealFocusedInput(input);
+        });
+      });
+
+      input.addEventListener("keydown", (event) => {
+        if (this.disabled) return;
+
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          const delta = event.shiftKey ? this.#step * 5 : this.#step;
+          this.#stepBy(event.key === "ArrowUp" ? delta : -delta);
+          return;
+        }
+
+        if (event.key === "Home") {
+          event.preventDefault();
+          this.#setValue(this.#min);
+          this.#armReplace();
+          return;
+        }
+
+        if (event.key === "End") {
+          event.preventDefault();
+          this.#setValue(this.#max);
+          this.#armReplace();
+          return;
+        }
+
+        // Blur commits; Escape reverts first so blur is a no-op change.
+        if (event.key === "Enter") {
+          event.preventDefault();
+          input.blur();
+          return;
+        }
+
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this.#replaceOnNextDigit = false;
+          this.#digitBuffer = secondsToMss(this.#value);
+          this.#draftText = String(this.#value);
+          input.value = this.#formatValue(this.#value);
+          input.blur();
+        }
+      });
+    }
+
+    #wireDurationEditing() {
+      const input = this.#input;
+      if (!input) return;
+
+      const renderBuffer = () => {
+        input.value = formatMssBuffer(this.#digitBuffer);
+      };
+
+      const pushDigit = (digit: number) => {
+        if (this.#replaceOnNextDigit || this.#isFullySelected()) {
+          this.#digitBuffer = digit;
+          this.#replaceOnNextDigit = false;
+        } else {
+          this.#digitBuffer = (this.#digitBuffer % 100) * 10 + digit;
+        }
+        renderBuffer();
+      };
+
+      const popDigit = () => {
+        if (this.#replaceOnNextDigit || this.#isFullySelected()) {
+          this.#digitBuffer = 0;
+          this.#replaceOnNextDigit = false;
+        } else {
+          this.#digitBuffer = Math.floor(this.#digitBuffer / 10);
+        }
+        renderBuffer();
+      };
+
+      input.addEventListener("beforeinput", (event) => {
+        if (this.disabled) {
+          event.preventDefault();
+          return;
+        }
+
+        event.preventDefault();
+
+        if (event.inputType === "insertText" && event.data && /^\d$/.test(event.data)) {
+          pushDigit(Number(event.data));
+          return;
+        }
+
+        if (isDeleteInputType(event.inputType)) popDigit();
+      });
+
+      // Fallback when beforeinput is unavailable.
+      if (!supportsBeforeInput) {
+        input.addEventListener("keydown", (event) => {
+          if (this.disabled) return;
+
+          if (event.key >= "0" && event.key <= "9") {
+            if (event.repeat) return;
+            event.preventDefault();
+            pushDigit(Number(event.key));
+            return;
+          }
+
+          if (event.key === "Backspace") {
+            event.preventDefault();
+            popDigit();
+          }
+        });
+      }
+
+      input.addEventListener("blur", () => {
+        this.#replaceOnNextDigit = false;
+        this.#setValue(mssToSeconds(this.#digitBuffer));
+      });
+    }
+
+    #wirePlainEditing() {
+      const input = this.#input;
+      if (!input) return;
+
+      input.addEventListener("beforeinput", (event) => {
+        if (this.disabled) {
+          event.preventDefault();
+          return;
+        }
+
+        if (
+          this.#replaceOnNextDigit &&
+          event.inputType === "insertText" &&
+          event.data &&
+          /\d/.test(event.data)
+        ) {
+          event.preventDefault();
+          this.#draftText = event.data.replace(/\D/g, "");
+          input.value = this.#draftText;
+          this.#replaceOnNextDigit = false;
+          return;
+        }
+
+        if (this.#replaceOnNextDigit && isDeleteInputType(event.inputType)) {
+          event.preventDefault();
+          this.#draftText = "";
+          input.value = "";
+          this.#replaceOnNextDigit = false;
+          return;
+        }
+
+        if (event.inputType === "insertText" && event.data && /\D/.test(event.data)) {
+          event.preventDefault();
+        }
+      });
+
+      input.addEventListener("input", () => {
+        this.#draftText = input.value.replace(/\D/g, "");
+        if (input.value !== this.#draftText) input.value = this.#draftText;
+      });
+
+      input.addEventListener("blur", () => {
+        this.#replaceOnNextDigit = false;
+        this.#setValue(this.#readDraft());
+      });
+    }
+  }
+
+  if (!customElements.get("number-field")) {
+    customElements.define("number-field", NumberFieldElement);
+  }
+</script>

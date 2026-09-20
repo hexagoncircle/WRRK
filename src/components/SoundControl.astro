@@ -1,52 +1,85 @@
 ---
-import { Icon } from "astro-icon/components";
-
 const { class: className, ...rest } = Astro.props;
 ---
 
-<button
-  id="sound-control"
-  aria-pressed="false"
-  class:list={["btn sound-control", className]}
-  {...rest}
->
-  <span class="sr-only">Toggle sound</span>
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-    <g class="sound-on">
-      <rect width="256" height="256" fill="none"></rect>
-      <path d="M80,168H32a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80l72-56V224Z" fill="none"></path>
-      <line x1="80" y1="88" x2="80" y2="168"></line>
-      <path class="sound-path-1" d="M192,106.85a32,32,0,0,1,0,42.3"></path>
-      <path class="sound-path-2" d="M221.67,80a72,72,0,0,1,0,96"></path>
-    </g>
-    <path
-      class="sound-off"
-      d="m48 40 160 176M80 88v80m72-13.6V224l-72-56H32a8 8 0 0 1-8-8V96a8 8 0 0 1 8-8h48l6.82-5.3m31.66-24.63L152 32v62.94"
-    ></path>
-  </svg>
-</button>
+<sound-control class:list={["sound-control", className]} {...rest}>
+  <button type="button" class="btn" aria-pressed="false">
+    <span class="sr-only">Toggle sound</span>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+      <g class="sound-on">
+        <rect width="256" height="256" fill="none"></rect>
+        <path d="M80,168H32a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80l72-56V224Z" fill="none"></path>
+        <line x1="80" y1="88" x2="80" y2="168"></line>
+        <path class="sound-path-1" d="M192,106.85a32,32,0,0,1,0,42.3"></path>
+        <path class="sound-path-2" d="M221.67,80a72,72,0,0,1,0,96"></path>
+      </g>
+      <path
+        class="sound-off"
+        d="m48 40 160 176M80 88v80m72-13.6V224l-72-56H32a8 8 0 0 1-8-8V96a8 8 0 0 1 8-8h48l6.82-5.3m31.66-24.63L152 32v62.94"
+      ></path>
+    </svg>
+  </button>
+</sound-control>
 
 <script>
   import { isMuted, play, setMuted } from "../scripts/sounds.js";
 
-  const $sound = document.getElementById("sound-control");
+  /**
+   * Light-DOM mute toggle. Markup comes from Astro; this element wires press state.
+   */
+  class SoundControlElement extends HTMLElement {
+    #button: HTMLButtonElement | null = null;
+    #ready = false;
 
-  $sound?.setAttribute("aria-pressed", isMuted() ? "true" : "false");
+    connectedCallback() {
+      if (this.#ready) return;
 
-  $sound?.addEventListener("click", () => {
-    if (!isMuted()) {
-      play("mute");
-      setMuted(true);
-      $sound.setAttribute("aria-pressed", "true");
-    } else {
-      setMuted(false);
-      play("unmute");
-      $sound.setAttribute("aria-pressed", "false");
+      const button = this.querySelector("button");
+      if (!(button instanceof HTMLButtonElement)) return;
+
+      this.#button = button;
+      this.#syncPressed(isMuted());
+
+      button.addEventListener("click", () => {
+        if (!isMuted()) {
+          play("mute");
+          setMuted(true);
+          this.#syncPressed(true);
+        } else {
+          setMuted(false);
+          play("unmute");
+          this.#syncPressed(false);
+        }
+      });
+
+      this.#ready = true;
     }
-  });
+
+    get muted() {
+      return isMuted();
+    }
+
+    set muted(value: boolean) {
+      const next = Boolean(value);
+      if (next !== isMuted()) setMuted(next);
+      this.#syncPressed(next);
+    }
+
+    #syncPressed(muted: boolean) {
+      this.#button?.setAttribute("aria-pressed", muted ? "true" : "false");
+    }
+  }
+
+  if (!customElements.get("sound-control")) {
+    customElements.define("sound-control", SoundControlElement);
+  }
 </script>
 
 <style>
+  .sound-control {
+    display: inline-block;
+  }
+
   svg {
     --size: max(0.9em, 1.5rem);
     width: var(--size);

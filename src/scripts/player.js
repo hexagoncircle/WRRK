@@ -2,11 +2,7 @@ import { cancelDigitDance, playCountdown, playDigitDance } from "./digit-dance.j
 import { STATUS, TimerEngine } from "./engine.js";
 import { createTimeout, formatMSS } from "./utils.js";
 import { LABEL } from "./labels.js";
-import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhaseType } from "./model.js";
-import { createCounterRing } from "./counter-ring.js";
-import { createPhaseLabel } from "./phase-label.js";
-import { createPlayerDisplay } from "./player-display.js";
-import { createProgressRing } from "./progress-ring.js";
+import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhaseType, totalWorkoutSeconds } from "./model.js";
 import { play } from "./sounds.js";
 import { WakeLockController } from "./wake-lock.js";
 
@@ -24,6 +20,42 @@ function requireEl(root, selector) {
   }
   return el;
 }
+
+/**
+ * @typedef {HTMLElement & {
+ *   set: (next: string, opts?: { tone?: string | null, animate?: boolean, from?: "bottom" | "top" }) => void,
+ *   getText: () => string,
+ * }} PhaseLabelEl
+ */
+
+/**
+ * @typedef {HTMLElement & {
+ *   setCount: (next: number) => void,
+ *   showAll: (current?: number) => void,
+ *   clear: () => void,
+ *   setActive: (round: number, total?: number) => void,
+ * }} CounterRingEl
+ */
+
+/**
+ * @typedef {HTMLElement & {
+ *   setTotals: (workSeconds: number, restSeconds: number, opts?: { fill?: boolean }) => void,
+ *   setProgress: (
+ *     state: { phase: 'work' | 'rest' | null, remainingSeconds: number, durationSeconds: number },
+ *     opts?: { settle?: boolean },
+ *   ) => void,
+ *   reset: () => void,
+ * }} ProgressRingEl
+ */
+
+/**
+ * @typedef {HTMLElement & {
+ *   digits: NodeListOf<Element>,
+ *   dateTime: string,
+ *   setTime: (seconds: number) => void,
+ *   setCountdownLabel: (n: number) => void,
+ * }} TimeDisplayEl
+ */
 
 /** @typedef {import('./model.js').TimerConfig} TimerConfig */
 /** @typedef {import('./model.js').Phase} Phase */
@@ -48,32 +80,45 @@ function requireEl(root, selector) {
  */
 export function enhancePlayer(root, options) {
   const attrsRoot = options.attrsRoot ?? root;
-  const $time = /** @type {HTMLElement & { dateTime?: string }} */ (requireEl(root, ".time"));
-  const $digits = root.querySelectorAll("[data-digit]");
+  const $time = /** @type {TimeDisplayEl} */ (requireEl(root, "time-display"));
+  const $digits = $time.digits;
   const $roundLabel = requireEl(root, ".round-label");
   const $roundCurrent = requireEl(root, ".round-current");
-  const phaseLabel = createPhaseLabel(requireEl(root, ".phase"));
+  const phaseLabel = /** @type {PhaseLabelEl} */ (requireEl(root, "phase-label"));
   const $playback = requireEl(root, ".playback");
   const $playbackLabel = requireEl($playback, ".label");
   const $reset = requireEl(root, ".reset");
 
-  const $progressRing = root.querySelector(".progress-ring");
+  const $progressRing = root.querySelector("progress-ring");
   const progressRing =
-    $progressRing instanceof HTMLElement ? createProgressRing($progressRing) : null;
+    $progressRing instanceof HTMLElement
+      ? /** @type {ProgressRingEl} */ ($progressRing)
+      : null;
 
-  const $counterRing = root.querySelector(".counter-ring");
-  const counterRing = $counterRing instanceof HTMLElement ? createCounterRing($counterRing) : null;
+  const $counterRing = root.querySelector("counter-ring");
+  const counterRing =
+    $counterRing instanceof HTMLElement
+      ? /** @type {CounterRingEl} */ ($counterRing)
+      : null;
 
-  const { setPlaybackLabel, setTime, setCountdownLabel, setRound, setIdleRound } =
-    createPlayerDisplay({
-      time: $time,
-      digits: $digits,
-      roundLabel: $roundLabel,
-      roundCurrent: $roundCurrent,
-      playback: $playback,
-      playbackLabel: $playbackLabel,
-    });
+  /** @param {string} text */
+  const setPlaybackLabel = (text) => {
+    $playbackLabel.textContent = text;
+    $playback.dataset.action = text === LABEL.pause ? "pause" : "play";
+  };
 
+  /** @param {number | null} current */
+  const setRound = (current) => {
+    const pending = current == null;
+    $roundLabel.hidden = pending;
+    $roundCurrent.textContent = pending ? "––" : String(current);
+  };
+
+  /** @param {TimerConfig} config */
+  const setIdleRound = (config) => {
+    $roundLabel.hidden = true;
+    $roundCurrent.textContent = formatMSS(totalWorkoutSeconds(config));
+  };
   /** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
   let countdownTimeline = null;
   const completeTimer = createTimeout();
@@ -206,7 +251,7 @@ export function enhancePlayer(root, options) {
         if (n === COUNTDOWN_SECONDS) {
           phaseLabel.set(LABEL.set, { animate: false });
         }
-        setCountdownLabel(n);
+        $time.setCountdownLabel(n);
         blipCountdown(n);
       },
     });
@@ -225,7 +270,7 @@ export function enhancePlayer(root, options) {
 
   const setIdleDisplay = () => {
     stopCountdownTimeline();
-    setTime(currentConfig.workSeconds);
+    $time.setTime(currentConfig.workSeconds);
     setIdleRound(currentConfig);
     phaseLabel.set(LABEL.idle);
     setPlaybackLabel(LABEL.start);
@@ -279,7 +324,7 @@ export function enhancePlayer(root, options) {
   const onPress = (event) => {
     const detail = event.detail;
     if (!isStartup(detail.status)) {
-      setTime(detail.remainingSeconds);
+      $time.setTime(detail.remainingSeconds);
       syncRingProgress(detail.phase, detail.remainingSeconds);
 
       if (detail.status === STATUS.running && toPhaseType(detail.phase?.type)) {
@@ -333,7 +378,7 @@ export function enhancePlayer(root, options) {
       lastPhaseType = null;
       play("completed");
       stopCountdownTimeline();
-      setTime(0);
+      $time.setTime(0);
       phaseLabel.set(LABEL.complete);
       setRound(null);
       setPlaybackLabel(LABEL.start);

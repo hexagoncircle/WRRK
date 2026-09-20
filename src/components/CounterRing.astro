@@ -9,18 +9,177 @@ interface Props {
 const { count, class: className, ...rest } = Astro.props;
 ---
 
-<Ring class:list={["counter-ring", className]} style={`--count: ${count}`} {...rest}>
-  <circle class="track" cx="50" cy="50" r="45" pathLength="100"></circle>
-  <circle class="fill" cx="50" cy="50" r="45" pathLength="100"></circle>
-  <circle class="active" cx="50" cy="50" r="45" pathLength="100"></circle>
-  <div class="text" slot="center">
-    <span class="current">1</span>
-    <span class="sep">/</span>
-    <span class="total">{count}</span>
-  </div>
-</Ring>
+<counter-ring class:list={["counter-ring", className]} style={`--count: ${count}`} {...rest}>
+  <Ring>
+    <circle class="track" cx="50" cy="50" r="45" pathLength="100"></circle>
+    <circle class="fill" cx="50" cy="50" r="45" pathLength="100"></circle>
+    <circle class="active" cx="50" cy="50" r="45" pathLength="100"></circle>
+    <div class="text" slot="center">
+      <span class="current">1</span>
+      <span class="sep">/</span>
+      <span class="total">{count}</span>
+    </div>
+  </Ring>
+</counter-ring>
+
+<script>
+  import { clamp, createTimeout } from "../scripts/utils.js";
+
+  const ANNOUNCE_MS = 3000;
+  const PATH_LENGTH = 100;
+  const GAP_SHARE = 0.6;
+  const ROUND_LINECAP_THRESHOLD = 30;
+
+  /**
+   * Light-DOM segmented rounds counter. Markup comes from Astro.
+   */
+  class CounterRingElement extends HTMLElement {
+    #$fill: Element | null = null;
+    #$active: Element | null = null;
+    #$current: Element | null = null;
+    #$total: Element | null = null;
+
+    #count = 1;
+    #announcedRound = 0;
+    #announceTimer = createTimeout();
+    #baseGap = 0;
+    #ready = false;
+
+    connectedCallback() {
+      if (this.#ready) return;
+
+      this.#$fill = this.querySelector(".fill");
+      this.#$active = this.querySelector(".active");
+      this.#$current = this.querySelector(".current");
+      this.#$total = this.querySelector(".total");
+
+      this.#count = clamp(this.style.getPropertyValue("--count"), 1, Number.MAX_SAFE_INTEGER);
+      const gapSource = this.querySelector(".ring") ?? this;
+      this.#baseGap =
+        Number.parseFloat(getComputedStyle(gapSource).getPropertyValue("--ring-gap")) || 0;
+
+      this.#ready = true;
+      this.showAll();
+    }
+
+    setCount(next: number) {
+      if (!this.#ready) this.connectedCallback();
+      this.#count = clamp(next, 1, Number.MAX_SAFE_INTEGER);
+      this.style.setProperty("--count", String(this.#count));
+      if (this.#$total) this.#$total.textContent = String(this.#count);
+      this.#applyGeometry();
+    }
+
+    /** @param {number} [current=1] 1-based label — pass total on complete so N/N persists */
+    showAll(current = 1) {
+      if (!this.#ready) this.connectedCallback();
+      this.#announcedRound = 0;
+      this.#stopAnnounce();
+      this.#paintFill(this.#count);
+      if (this.#$current) this.#$current.textContent = String(clamp(current, 1, this.#count));
+    }
+
+    clear() {
+      if (!this.#ready) this.connectedCallback();
+      this.#announcedRound = 0;
+      this.#stopAnnounce();
+      this.#paintFill(0);
+      if (this.#$current) this.#$current.textContent = "1";
+    }
+
+    /** @param {number} round 1-based current round */
+    setActive(round: number, total?: number) {
+      if (!this.#ready) this.connectedCallback();
+      if (total != null && total !== this.#count) this.setCount(total);
+      const current = clamp(round, 1, this.#count);
+      this.#paintFill(current);
+      if (this.#$current) this.#$current.textContent = String(current);
+      this.#announce(current);
+    }
+
+    #geometry(n: number) {
+      const segment = PATH_LENGTH / n;
+      const linecap = n <= ROUND_LINECAP_THRESHOLD ? "round" : "butt";
+
+      if (linecap === "round") {
+        const gap = Math.min(this.#baseGap, segment);
+        return { gap, segment, dash: segment - gap, linecap };
+      }
+
+      const gap = Math.min(this.#baseGap, segment * GAP_SHARE);
+      return { gap, segment, dash: Math.max(segment - gap, 0), linecap };
+    }
+
+    #applyGeometry() {
+      const g = this.#geometry(this.#count);
+      this.style.setProperty("--segment-gap", String(g.gap));
+      this.style.setProperty("--segment-dash", String(g.dash));
+      this.style.setProperty("--segment-rest", String(PATH_LENGTH - g.dash));
+      this.style.setProperty("--segment-linecap", g.linecap);
+      return g;
+    }
+
+    #paintFillRing(dasharray: string, visible: boolean) {
+      if (!(this.#$fill instanceof SVGElement)) return;
+      this.#$fill.style.setProperty("--fill-dasharray", dasharray);
+      this.#$fill.style.opacity = visible ? "1" : "0";
+    }
+
+    /** @param {number} lit How many segments from the start are solid (0..count) */
+    #paintFill(lit: number) {
+      const { segment, dash, gap } = this.#applyGeometry();
+
+      if (lit <= 0) {
+        this.#paintFillRing("0 100", false);
+        if (this.#$active instanceof HTMLElement || this.#$active instanceof SVGElement) {
+          this.#$active.style.opacity = "0";
+        }
+        return;
+      }
+
+      const completed = lit - 1;
+      if (completed === 0) {
+        this.#paintFillRing("0 100", false);
+      } else {
+        const pattern = [];
+        for (let i = 0; i < completed; i++) pattern.push(dash, gap);
+        pattern[pattern.length - 1] = gap + (this.#count - completed) * segment;
+        this.#paintFillRing(pattern.join(" "), true);
+      }
+
+      if (this.#$active instanceof HTMLElement || this.#$active instanceof SVGElement) {
+        this.#$active.style.opacity = "1";
+      }
+      this.style.setProperty("--active-index", String(completed));
+    }
+
+    #stopAnnounce() {
+      this.#announceTimer.clear();
+      delete this.dataset.announce;
+    }
+
+    #announce(round: number) {
+      if (this.#announcedRound === round) return;
+      this.#announcedRound = round;
+      this.#stopAnnounce();
+      this.dataset.announce = "";
+      this.#announceTimer.set(() => {
+        delete this.dataset.announce;
+      }, ANNOUNCE_MS);
+    }
+  }
+
+  if (!customElements.get("counter-ring")) {
+    customElements.define("counter-ring", CounterRingElement);
+  }
+</script>
 
 <style>
+  .counter-ring {
+    display: block;
+    min-width: 0;
+  }
+
   .track,
   .fill,
   .active {
@@ -58,25 +217,25 @@ const { count, class: className, ...rest } = Astro.props;
     color: var(--color-digit, var(--color-fg));
   }
 
-  .counter-ring[data-announce] {
-    animation: pulse 1s steps(1, jump-end) 2 forwards;
-
-    .text {
-      font-size: 2.25em;
-      translate: 0 -0.02em;
-    }
-
-    .sep,
-    .total {
-      display: none;
-    }
+  .counter-ring[data-announce] :global(.text) {
+    font-size: 2.25em;
+    translate: 0 -0.02em;
   }
 
-  :global([data-status="complete"]) .counter-ring {
-    animation: pulse 1s steps(1, jump-end) 3 forwards;
+  .counter-ring[data-announce] :global(.sep),
+  .counter-ring[data-announce] :global(.total) {
+    display: none;
+  }
 
-    .fill {
-      stroke: var(--color-digit, var(--color-fg));
-    }
+  .counter-ring[data-announce] :global(.ring) {
+    animation: pulse 1s steps(1, jump-end) 2 forwards;
+  }
+
+  :global([data-status="complete"]) .counter-ring :global(.ring) {
+    animation: pulse 1s steps(1, jump-end) 3 forwards;
+  }
+
+  :global([data-status="complete"]) .counter-ring :global(.fill) {
+    stroke: var(--color-digit, var(--color-fg));
   }
 </style>

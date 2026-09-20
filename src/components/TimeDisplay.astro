@@ -2,12 +2,76 @@
 import Digit from "./Digit.astro";
 ---
 
-<time class="time" datetime="PT0M0S" aria-label="0:00">
+<time-display class="time" datetime="PT0M0S" aria-label="0:00" role="timer">
   <Digit digit={0} />
   <span class="time-separator"></span>
   <Digit digit={0} />
   <Digit digit={0} />
-</time>
+</time-display>
+
+<script>
+  import { formatDurationAttr, formatMSS } from "../scripts/utils.js";
+
+  /**
+   * Light-DOM clock face. Markup comes from Astro; digits stay as SVG children.
+   */
+  class TimeDisplayElement extends HTMLElement {
+    #digits: NodeListOf<Element> | null = null;
+    #ready = false;
+
+    connectedCallback() {
+      if (this.#ready) return;
+      this.#digits = this.querySelectorAll("[data-digit]");
+      this.#ready = true;
+    }
+
+    get digits() {
+      if (!this.#ready) this.connectedCallback();
+      return this.#digits ?? this.querySelectorAll("[data-digit]");
+    }
+
+    get dateTime() {
+      return this.getAttribute("datetime") ?? "";
+    }
+
+    set dateTime(value: string) {
+      this.setAttribute("datetime", value);
+    }
+
+    /**
+     * Map a whole-second countdown onto the digit SVGs (M:SS, max 9:59).
+     * @param {number} seconds
+     */
+    setTime(seconds: number) {
+      if (!this.#ready) this.connectedCallback();
+
+      const label = formatMSS(seconds);
+      const [mins, secs] = label.split(":");
+      const values = [mins, secs[0], secs[1]];
+
+      [...this.digits].forEach((el, i) => {
+        if (!(el instanceof Element)) return;
+        const digit = values[i] ?? "0";
+        if (el.dataset.digit !== digit) {
+          el.dataset.digit = digit;
+        }
+      });
+
+      this.dateTime = formatDurationAttr(seconds);
+      this.setAttribute("aria-label", label);
+    }
+
+    /** @param {number} n */
+    setCountdownLabel(n: number) {
+      this.dateTime = `PT${n}S`;
+      this.setAttribute("aria-label", String(n));
+    }
+  }
+
+  if (!customElements.get("time-display")) {
+    customElements.define("time-display", TimeDisplayElement);
+  }
+</script>
 
 <style>
   .time {

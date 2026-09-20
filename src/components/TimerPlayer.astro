@@ -11,7 +11,7 @@ const { class: className, ...rest } = Astro.props;
 const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
 ---
 
-<article class:list={["timer-player", className]} data-player {...rest}>
+<timer-player class:list={["timer-player", className]} {...rest}>
   <TimeDisplay />
   <div class="status">
     <div class="round" aria-live="polite">
@@ -36,7 +36,41 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     <CounterRing count={DEFAULT_CONFIG.rounds} />
     <ProgressRing work={DEFAULT_CONFIG.workSeconds} rest={DEFAULT_CONFIG.restSeconds} />
   </div>
-</article>
+</timer-player>
+
+<script>
+  import { enhancePlayer } from "../scripts/player.js";
+
+  /**
+   * Light-DOM timer player shell. Markup comes from Astro; enhance() wires the engine.
+   */
+  class TimerPlayerElement extends HTMLElement {
+    /**
+     * @param {{
+     *   getConfig: () => import('../scripts/model.js').TimerConfig,
+     *   attrsRoot?: HTMLElement,
+     *   onRunningChange?: (running: boolean) => void,
+     * }} options
+     */
+    async enhance(options: {
+      getConfig: () => import("../scripts/model.js").TimerConfig;
+      attrsRoot?: HTMLElement;
+      onRunningChange?: (running: boolean) => void;
+    }) {
+      await Promise.all([
+        customElements.whenDefined("time-display"),
+        customElements.whenDefined("phase-label"),
+        customElements.whenDefined("counter-ring"),
+        customElements.whenDefined("progress-ring"),
+      ]);
+      return enhancePlayer(this, options);
+    }
+  }
+
+  if (!customElements.get("timer-player")) {
+    customElements.define("timer-player", TimerPlayerElement);
+  }
+</script>
 
 <style>
   .timer-player {
