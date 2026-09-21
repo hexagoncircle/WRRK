@@ -85,17 +85,25 @@ function teardownAudio() {
   } catch {}
 }
 
+/**
+ * iOS: "playback" ignores the silent switch but exposes Now Playing controls.
+ * Use it only while foreground; "ambient" drops lock-screen media chrome.
+ * @param {"playback" | "ambient"} type
+ */
+function setAudioSessionType(type) {
+  if (!navigator.audioSession) return;
+  try {
+    navigator.audioSession.type = type;
+  } catch {}
+}
+
 function setupAudio() {
   if (hasLiveContext()) return true;
 
   teardownAudio();
 
-  // Enable sound even if phone's silent switch is on.
-  if (navigator.audioSession) {
-    try {
-      navigator.audioSession.type = "playback";
-    } catch {}
-  }
+  // Audible with the ringer off while the app is open.
+  setAudioSessionType("playback");
 
   if (typeof AudioContext === "undefined") return false;
 
@@ -114,6 +122,7 @@ function setupAudio() {
  */
 async function resumeAudio({ forceRecreate = false, bounce = false } = {}) {
   if (forceRecreate) teardownAudio();
+  setAudioSessionType("playback");
   if (!setupAudio() || !audioCtx) return false;
   if (audioCtx.state === "running" && !bounce) {
     needsRevive = false;
@@ -139,6 +148,7 @@ async function resumeAudio({ forceRecreate = false, bounce = false } = {}) {
 
 function onAppForeground() {
   if (!audioCtx) return;
+  setAudioSessionType("playback");
   needsRevive = true;
   // Always bounce through suspend→resume on return; iOS can report "running"
   // while the context is actually dead after app switching.
@@ -148,6 +158,8 @@ function onAppForeground() {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     needsRevive = true;
+    // Avoid lock-screen / Control Center media controls for timer SFX.
+    setAudioSessionType("ambient");
     return;
   }
   onAppForeground();
