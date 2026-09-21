@@ -1,4 +1,4 @@
-const CACHE_NAME = "wrrk-v7";
+const CACHE_NAME = "wrrk-v8";
 const FONT_HOSTS = new Set(["use.typekit.net", "p.typekit.net"]);
 const PRECACHE = [
   "/",
@@ -12,15 +12,25 @@ const PRECACHE = [
   "/web-app-manifest-512x512.png",
 ];
 
-/** Intro media — online-only; never store in the SW cache. */
-const INTRO_ASSET =
-  /^\/wrrk-(jumprope|run|stretch|weights)\.(json|svg)$/;
+/** Character stills + Lottie JSON — online-only; never store in the SW cache. */
+const INTRO_MEDIA = /^\/wrrk-(jumprope|run|stretch|weights)\.(json|svg)$/;
+
+/**
+ * @param {string} pathname
+ */
+function isIntroPath(pathname) {
+  return (
+    INTRO_MEDIA.test(pathname) ||
+    pathname === "/wrrk-logotype.svg" ||
+    (pathname.startsWith("/_astro/") && /lottie/i.test(pathname))
+  );
+}
 
 /**
  * @param {URL} url
  */
 function isIntroAsset(url) {
-  return url.origin === self.location.origin && INTRO_ASSET.test(url.pathname);
+  return url.origin === self.location.origin && isIntroPath(url.pathname);
 }
 
 /**
@@ -102,6 +112,9 @@ async function precachePageAssets(cache, path) {
     if (!assetPath || seen.has(assetPath)) continue;
     seen.add(assetPath);
 
+    // Intro-only media (incl. Lottie chunk) stays online-only.
+    if (isIntroPath(assetPath)) continue;
+
     try {
       const assetResponse = await fetch(assetPath);
       if (!assetResponse.ok) continue;
@@ -125,6 +138,8 @@ async function revalidate(request) {
   try {
     const response = await fetch(request);
     if (!response.ok || response.type === "opaque") return;
+    const url = new URL(request.url);
+    if (isIntroAsset(url)) return;
     const cache = await caches.open(CACHE_NAME);
     await cachePut(cache, request, response.clone());
     if (request.mode === "navigate") {

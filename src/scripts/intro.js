@@ -13,7 +13,7 @@ const FIGURE_ROTATE = 3;
  * @param {number} ms
  * @returns {Promise<void>}
  */
-function sleep(ms) {
+function hold(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
@@ -44,8 +44,20 @@ function revealImmediate(intro, app, onReveal) {
 }
 
 /**
- * Play a panel's Lottie once. Optional onNearEnd fires LOGO_LEAD_MS before complete
- * (and again-safe on finish) so the logotype can lead the last character.
+ * Reveal the timer without an intro shell (missing #intro).
+ * @param {HTMLElement} app
+ * @param {(() => void) | undefined} onReveal
+ */
+function revealWithoutIntro(app, onReveal) {
+  onReveal?.();
+  app.removeAttribute("inert");
+  app.removeAttribute("aria-hidden");
+  finishIntro();
+}
+
+/**
+ * Play a panel's Lottie once. Optional onNearEnd fires once, LOGO_LEAD_MS
+ * before complete (scheduled from duration on DOMLoaded).
  * @param {HTMLElement} panel
  * @param {typeof import('lottie-web/build/player/lottie_light.js').default} lottie
  * @param {(() => void) | undefined} [onNearEnd]
@@ -53,20 +65,18 @@ function revealImmediate(intro, app, onReveal) {
  */
 function playAnimation(panel, lottie, onNearEnd) {
   const src = panel.dataset.src;
-  const figure = panel.querySelector(".intro-figure");
-  if (!src || !(figure instanceof HTMLElement)) {
+  if (!src) {
     onNearEnd?.();
     return Promise.resolve({ destroy: () => {} });
   }
 
-  // Layer Lottie over the still SVG; reveal only after the first frame is ready.
-  const lottieRoot = document.createElement("div");
-  lottieRoot.className = "intro-lottie";
-  figure.append(lottieRoot);
+  const animRoot = document.createElement("div");
+  animRoot.hidden = true;
+  panel.append(animRoot);
 
   return new Promise((resolve) => {
     const anim = lottie.loadAnimation({
-      container: lottieRoot,
+      container: animRoot,
       renderer: "svg",
       loop: false,
       autoplay: false,
@@ -78,22 +88,16 @@ function playAnimation(panel, lottie, onNearEnd) {
     });
 
     let settled = false;
-    let nearEndFired = false;
-
-    const fireNearEnd = () => {
-      if (nearEndFired || !onNearEnd) return;
-      nearEndFired = true;
-      onNearEnd();
-    };
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let leadId;
 
     const finish = () => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timeoutId);
+      window.clearTimeout(leadId);
       anim.removeEventListener("complete", finish);
       anim.removeEventListener("data_failed", finish);
-      if (onNearEnd) anim.removeEventListener("enterFrame", onFrame);
-      fireNearEnd();
       resolve({
         destroy: () => {
           try {
@@ -105,30 +109,19 @@ function playAnimation(panel, lottie, onNearEnd) {
       });
     };
 
-    const onFrame = () => {
-      const remainingMs = ((anim.totalFrames - anim.currentFrame) / anim.frameRate) * 1000;
-      if (remainingMs <= LOGO_LEAD_MS) fireNearEnd();
-    };
-
     const timeoutId = window.setTimeout(finish, LOTTIE_TIMEOUT_MS);
 
     anim.addEventListener("complete", finish);
     anim.addEventListener("data_failed", finish);
-    if (onNearEnd) anim.addEventListener("enterFrame", onFrame);
     anim.addEventListener("DOMLoaded", () => {
-      // Lottie SVG renderer clips every composition to its w×h via clip-path.
-      // Jump-rope (and similar) arcs draw past that box — drop the clip so they can.
-      const svg = lottieRoot.querySelector("svg");
-      if (svg instanceof SVGElement) {
-        svg.setAttribute("overflow", "visible");
-        const clipped = svg.querySelector(":scope > g[clip-path]");
-        clipped?.removeAttribute("clip-path");
-      }
-
-      // Swap still SVG for the animated one so they never stack/duplicate.
-      figure.querySelectorAll("img").forEach((img) => img.remove());
-      lottieRoot.classList.add("is-ready");
+      if (settled) return;
+      animRoot.hidden = false;
+      panel.replaceChildren(animRoot);
       anim.play();
+      if (onNearEnd) {
+        const durationMs = (anim.totalFrames / anim.frameRate) * 1000;
+        leadId = window.setTimeout(onNearEnd, Math.max(0, durationMs - LOGO_LEAD_MS));
+      }
     });
   });
 }
@@ -143,7 +136,7 @@ async function showLogotype(intro, animate) {
   if (!(logo instanceof HTMLElement)) return;
 
   const mark = logo.querySelector("img");
-  const figures = [...intro.querySelectorAll(".intro-figure")].filter(
+  const figures = [...intro.querySelectorAll(".intro-panel")].filter(
     (el) => el instanceof HTMLElement,
   );
   logo.style.opacity = "1";
@@ -158,7 +151,7 @@ async function showLogotype(intro, animate) {
     ...buildOffsetSegments(offsets, "in"),
   ]).finished;
 
-  await sleep(LOGO_HOLD_MS);
+  await hold(LOGO_HOLD_MS);
 }
 
 /**
@@ -169,11 +162,12 @@ async function showLogotype(intro, animate) {
  * @param {HTMLElement} logo
  */
 function computeFigureOffsets(figures, logo) {
-  const { x: logoCx, y: logoCy } = rectCenter(logo.getBoundingClientRect());
+  const { x: logoCx, y: logoCy } = rectCenter(logo);
 
   return figures.map((figure) => {
     const rect = figure.getBoundingClientRect();
-    const { x: fx, y: fy } = rectCenter(rect);
+    const fx = rect.left + rect.width / 2;
+    const fy = rect.top + rect.height / 2;
     const toLeft = fx < logoCx;
     const toTop = fy < logoCy;
     const offset = Math.round(Math.min(rect.width, rect.height) * FIGURE_OFFSET_RATIO);
@@ -194,8 +188,9 @@ function computeFigureOffsets(figures, logo) {
   });
 }
 
-/** @param {DOMRect} rect */
-function rectCenter(rect) {
+/** @param {HTMLElement} el */
+function rectCenter(el) {
+  const rect = el.getBoundingClientRect();
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
 
@@ -267,7 +262,7 @@ async function clipOutToTimer(intro, app, players = [], onReveal) {
 
 /**
  * Runs the brand intro when online, then clips away bottom→top to reveal the timer.
- * Offline skips straight to the timer (intro assets are not SW-cached).
+ * Offline and reduced-motion skip straight to the timer (intro assets are not SW-cached).
  * Call after the timer has been enhanced; pass onReveal to start the digit dance
  * as the overlay begins to clear.
  * @param {HTMLElement} [app]
@@ -279,11 +274,20 @@ export async function playIntro(
   { onReveal } = {},
 ) {
   const intro = document.querySelector("#intro");
-  if (!(intro instanceof HTMLElement) || !(app instanceof HTMLElement)) return;
+  if (!(app instanceof HTMLElement)) return;
 
-  // Offline = timer only; intro media is not service-worker cached.
-  if (!navigator.onLine) {
-    revealImmediate(intro, app, onReveal);
+  // Missing shell, offline, reduced motion, or already done → timer only.
+  if (
+    !(intro instanceof HTMLElement) ||
+    !navigator.onLine ||
+    prefersReducedMotion() ||
+    document.documentElement.dataset.intro === "done"
+  ) {
+    if (intro instanceof HTMLElement) {
+      revealImmediate(intro, app, onReveal);
+    } else {
+      revealWithoutIntro(app, onReveal);
+    }
     return;
   }
 
@@ -299,48 +303,35 @@ export async function playIntro(
     return;
   }
 
-  // Still SVGs are in the template; show each panel (also the reduced-motion graphic).
-  if (prefersReducedMotion()) {
-    for (const panel of panels) panel.classList.add("is-shown");
-    await sleep(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
-    const logo = intro.querySelector(".intro-logotype");
-    if (logo instanceof HTMLElement) logo.style.opacity = "1";
-    await sleep(LOGO_HOLD_MS);
-    revealImmediate(intro, app, onReveal);
-    return;
-  }
-
   let lottie;
   try {
     const lottieMod = await import("lottie-web/build/player/lottie_light.js");
     lottie = lottieMod.default;
   } catch {
-    for (const panel of panels) panel.classList.add("is-shown");
-    await sleep(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
+    // Still SVGs are already in the template; hold then logo + clip without Lottie.
+    await hold(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
     const { animate } = await import("motion");
     await showLogotype(intro, animate);
     await clipOutToTimer(intro, app, [], onReveal);
     return;
   }
 
-  // Preload Motion so the logotype spring can start on the near-end frame with no import lag.
-  const { animate } = await import("motion");
+  // Preload Motion while Lotties play so the logo slam has no import lag.
+  const motionReady = import("motion");
 
   /** @type {Promise<void> | null} */
   let logoPromise = null;
   const ensureLogo = () => {
-    logoPromise ??= showLogotype(intro, animate);
+    logoPromise ??= motionReady.then(({ animate }) => showLogotype(intro, animate));
   };
 
-  // Reveal panels together; each Lottie starts as soon as its cell is on screen.
+  // Each Lottie starts as soon as its cell is on screen.
   // Logotype starts LOGO_LEAD_MS before the last character finishes.
-  /** @type {Array<{ destroy: () => void }>} */
   const lastPanel = panels.at(-1);
   const players = await Promise.all(
-    panels.map((panel) => {
-      panel.classList.add("is-shown");
-      return playAnimation(panel, lottie, panel === lastPanel ? ensureLogo : undefined);
-    }),
+    panels.map((panel) =>
+      playAnimation(panel, lottie, panel === lastPanel ? ensureLogo : undefined),
+    ),
   );
 
   ensureLogo();

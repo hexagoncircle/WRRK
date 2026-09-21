@@ -7,9 +7,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     {
       characters.map((id) => (
         <div class="intro-panel" data-src={`/wrrk-${id}.json`}>
-          <div class="intro-figure">
-            <img src={`/wrrk-${id}.svg`} alt="" width="144" height="144" decoding="async" />
-          </div>
+          <img src={`/wrrk-${id}.svg`} alt="" width="144" height="144" decoding="async" />
         </div>
       ))
     }
@@ -37,34 +35,15 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
   }
 
   .intro-panel {
-    display: grid;
-    place-items: center;
+    position: relative;
+    place-self: center;
+    width: min(36vmin, 100%);
+    aspect-ratio: 1;
     min-width: 0;
     min-height: 0;
-    visibility: hidden;
-    overflow: visible;
   }
 
-  .intro-panel.is-shown {
-    visibility: visible;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .intro-panel {
-      visibility: visible;
-    }
-  }
-
-  .intro-figure {
-    position: relative;
-    width: min(36vmin, 100%);
-    height: auto;
-    aspect-ratio: 1;
-    overflow: visible;
-  }
-
-  .intro-figure :global(img),
-  .intro-figure :global(svg) {
+  .intro-panel > * {
     display: block;
     width: 100%;
     height: 100%;
@@ -72,18 +51,13 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     overflow: visible;
   }
 
-  .intro-figure :global(.intro-lottie) {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    pointer-events: none;
+  /* Lottie clips each SVG to comp w×h; jump-rope arcs need to paint past that. */
+  .intro-panel svg {
     overflow: visible;
   }
 
-  .intro-figure :global(.intro-lottie.is-ready) {
-    opacity: 1;
+  .intro-panel svg > g[clip-path] {
+    clip-path: none;
   }
 
   .intro-logotype {
@@ -92,14 +66,13 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     z-index: 1;
     display: grid;
     place-items: center;
-    opacity: 0;
     pointer-events: none;
-  }
+    opacity: 0;
 
-  .intro-logotype img {
-    display: block;
-    width: min(60vmin, 80%);
-    height: auto;
-    aspect-ratio: 144 / 108;
+    img {
+      display: block;
+      width: 60vmin;
+      height: auto;
+    }
   }
 </style>

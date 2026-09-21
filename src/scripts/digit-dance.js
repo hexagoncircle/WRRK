@@ -2,6 +2,7 @@ import { animate } from "motion";
 
 const ITERATIONS = 2;
 const DEFAULT_DURATION = 0.1;
+const FLASH_MS = 100;
 
 /** One figure-8 lap (middle visited twice). */
 const FIGURE8 = [
@@ -34,6 +35,13 @@ let activeControls = null;
 
 /** @type {Element[] | null} */
 let activeDigits = null;
+
+/**
+ * @returns {boolean}
+ */
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function themeColors(el) {
   const style = getComputedStyle(el);
@@ -162,32 +170,66 @@ function trackControls(controls, digits) {
   return controls;
 }
 
-export function cancelDigitDance() {
-  const digits = activeDigits;
-  const controls = activeControls;
-  activeControls = null;
-  activeDigits = null;
-  controls?.stop();
-  if (digits) setFills(digits, null);
-}
-
-/** Figure-8 chase, then settle into each digit's glyph. */
-export function playDigitDance(digits) {
-  const list = [...digits];
-  if (list.length === 0) return null;
-
+/**
+ * Brief subtle flash, then snap to CSS glyph fills (reduced motion).
+ * Uses a Motion timeline so cancelDigitDance can stop() like the chase path.
+ * @param {Element[]} digits
+ */
+function playDigitFlash(digits) {
   cancelDigitDance();
 
-  const { fg, subtle } = themeColors(list[0]);
-  setFills(list, subtle);
+  const { subtle } = themeColors(digits[0]);
+  const flashSeconds = FLASH_MS / 1000;
+  setFills(digits, subtle);
 
-  const sequence = [];
-  let maxEnd = 0;
+  const sequence = [
+    [
+      toggle(
+        () => setFills(digits, null),
+        () => setFills(digits, subtle),
+      ),
+      { duration: 0, at: flashSeconds },
+    ],
+    [() => {}, { duration: flashSeconds, at: 0, ease: "linear" }],
+  ];
 
-  for (const d of list) {
-    const { sequence: segments, end } = buildDigitDanceSequence(d, { fg, subtle });
-    sequence.push(...segments);
-    if (end > maxEnd) maxEnd = end;
+  return trackControls(animate(sequence), digits);
+}
+
+/**
+ * Reduced-motion countdown beats: snap the ones glyph, brief fill flash, no chase.
+ * @param {unknown[]} sequence
+ * @param {{ ones: Element, list: Element[], subtle: string, count: number, beatSeconds: number, prepSeconds: number, total: number, onBeat?: (n: number) => void }} opts
+ */
+function appendCountdownFlash(sequence, { ones, list, subtle, count, beatSeconds, prepSeconds, total, onBeat }) {
+  const flashAt = FLASH_MS / 1000;
+
+  for (let beat = 0; beat < count; beat++) {
+    const t = prepSeconds + beat * beatSeconds;
+    const n = count - beat;
+
+    sequence.push([
+      toggle(
+        () => {
+          ones.dataset.digit = String(n);
+          setFills(list, subtle);
+          onBeat?.(n);
+        },
+        () => {
+          ones.dataset.digit = beat === 0 ? "" : String(n + 1);
+          setFills(list, subtle);
+        },
+      ),
+      { duration: 0, at: t },
+    ]);
+
+    sequence.push([
+      toggle(
+        () => setFills([ones], null),
+        () => setFills([ones], subtle),
+      ),
+      { duration: 0, at: t + flashAt },
+    ]);
   }
 
   sequence.push([
@@ -195,39 +237,18 @@ export function playDigitDance(digits) {
       () => setFills(list, null),
       () => setFills(list, subtle),
     ),
-    { duration: 0, at: maxEnd },
+    { duration: 0, at: total },
   ]);
-
-  sequence.push([() => {}, { duration: maxEnd, at: 0, ease: "linear" }]);
-
-  return trackControls(animate(sequence), list);
 }
 
 /**
- * Prep chase in lockstep. As countdown begins, the ones digit staggers into
- * `count` (with the first blip / "Get ready"). Later beats snap ones count→1
- * while other digits keep chasing.
+ * Full-motion countdown: prep chase, settle ones on first beat, chase the rest.
+ * @param {unknown[]} sequence
+ * @param {{ ones: Element, list: Element[], fg: string, subtle: string, count: number, beatSeconds: number, prepSeconds: number, onBeat?: (n: number) => void }} opts
  */
-export function playCountdown(
-  digits,
-  { count = 3, beatSeconds = 1, prepSeconds = 0, onBeat } = {},
-) {
-  const list = [...digits];
-  if (list.length === 0) return null;
-
-  cancelDigitDance();
-
-  const ones = list[list.length - 1];
+function appendCountdownChase(sequence, { ones, list, fg, subtle, count, beatSeconds, prepSeconds, onBeat }) {
   const dancers = list.slice(0, -1);
   const firstValue = String(count);
-
-  for (const d of list) d.dataset.digit = "";
-
-  const { fg, subtle } = themeColors(list[0]);
-  setFills(list, subtle);
-
-  const sequence = [];
-  const total = prepSeconds + count * beatSeconds;
   const chase = danceTimings(beatSeconds);
   const prepBeats = Math.max(0, Math.round(prepSeconds / beatSeconds));
 
@@ -303,8 +324,98 @@ export function playCountdown(
 
     for (const d of dancers) chaseAt(d, t);
   }
+}
+
+export function cancelDigitDance() {
+  const digits = activeDigits;
+  const controls = activeControls;
+  activeControls = null;
+  activeDigits = null;
+  controls?.stop();
+  if (digits) setFills(digits, null);
+}
+
+/** Figure-8 chase, then settle into each digit's glyph. */
+export function playDigitDance(digits) {
+  const list = [...digits];
+  if (list.length === 0) return null;
+
+  if (prefersReducedMotion()) return playDigitFlash(list);
+
+  cancelDigitDance();
+
+  const { fg, subtle } = themeColors(list[0]);
+  setFills(list, subtle);
+
+  const sequence = [];
+  let maxEnd = 0;
+
+  for (const d of list) {
+    const { sequence: segments, end } = buildDigitDanceSequence(d, { fg, subtle });
+    sequence.push(...segments);
+    if (end > maxEnd) maxEnd = end;
+  }
+
+  sequence.push([
+    toggle(
+      () => setFills(list, null),
+      () => setFills(list, subtle),
+    ),
+    { duration: 0, at: maxEnd },
+  ]);
+
+  sequence.push([() => {}, { duration: maxEnd, at: 0, ease: "linear" }]);
+
+  return trackControls(animate(sequence), list);
+}
+
+/**
+ * Prep chase in lockstep. As countdown begins, the ones digit staggers into
+ * `count` (with the first blip / "Get ready"). Later beats snap ones count→1
+ * while other digits keep chasing. Reduced motion skips the chase and flashes
+ * each beat instead.
+ */
+export function playCountdown(
+  digits,
+  { count = 3, beatSeconds = 1, prepSeconds = 0, onBeat } = {},
+) {
+  const list = [...digits];
+  if (list.length === 0) return null;
+
+  cancelDigitDance();
+
+  const ones = list[list.length - 1];
+  const { fg, subtle } = themeColors(list[0]);
+  const total = prepSeconds + count * beatSeconds;
+  const sequence = [];
+
+  for (const d of list) d.dataset.digit = "";
+  setFills(list, subtle);
+
+  if (prefersReducedMotion()) {
+    appendCountdownFlash(sequence, {
+      ones,
+      list,
+      subtle,
+      count,
+      beatSeconds,
+      prepSeconds,
+      total,
+      onBeat,
+    });
+  } else {
+    appendCountdownChase(sequence, {
+      ones,
+      list,
+      fg,
+      subtle,
+      count,
+      beatSeconds,
+      prepSeconds,
+      onBeat,
+    });
+  }
 
   sequence.push([() => {}, { duration: total, at: 0, ease: "linear" }]);
-
   return trackControls(animate(sequence), list);
 }

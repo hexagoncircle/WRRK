@@ -470,10 +470,8 @@ export function enhancePlayer(root, options) {
     if (!document.hidden) syncCountdownTimeline();
   });
 
-  // Defer the digit dance until the intro starts sliding up so it is visible
-  // through the curtain rather than finishing under opaque white.
-  const introPending = document.documentElement.dataset.intro === "pending";
-  applyConfig(currentConfig, { lightUp: !introPending });
+  // Digit dance starts once via playIntro onReveal (including skip paths).
+  applyConfig(currentConfig, { lightUp: false });
 
   return {
     softReset: applyConfig,
