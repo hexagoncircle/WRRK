@@ -1,7 +1,13 @@
 const HOLD_MS = 2000;
 const LOGO_HOLD_MS = 800;
-const LOGO_LEAD_MS = 600;
+const LOGO_LEAD_MS = 630;
 const LOTTIE_TIMEOUT_MS = 8000;
+const LOGO_ENTRY_SPRING = { type: "spring", bounce: 0.6, visualDuration: 0.1 };
+const FIGURE_OUT = { duration: 0.1 };
+const FIGURE_IN_SPRING = { type: "spring", bounce: 0.6, visualDuration: 0.15 };
+const FIGURE_SCALE = 1.1;
+const FIGURE_OFFSET_RATIO = 0.03;
+const FIGURE_ROTATE = 3;
 
 /**
  * @param {number} ms
@@ -110,6 +116,15 @@ function playAnimation(panel, lottie, onNearEnd) {
     anim.addEventListener("data_failed", finish);
     if (onNearEnd) anim.addEventListener("enterFrame", onFrame);
     anim.addEventListener("DOMLoaded", () => {
+      // Lottie SVG renderer clips every composition to its w×h via clip-path.
+      // Jump-rope (and similar) arcs draw past that box — drop the clip so they can.
+      const svg = lottieRoot.querySelector("svg");
+      if (svg instanceof SVGElement) {
+        svg.setAttribute("overflow", "visible");
+        const clipped = svg.querySelector(":scope > g[clip-path]");
+        clipped?.removeAttribute("clip-path");
+      }
+
       // Swap still SVG for the animated one so they never stack/duplicate.
       figure.querySelectorAll("img").forEach((img) => img.remove());
       lottieRoot.classList.add("is-ready");
@@ -128,24 +143,104 @@ async function showLogotype(intro, animate) {
   if (!(logo instanceof HTMLElement)) return;
 
   const mark = logo.querySelector("img");
+  const figures = [...intro.querySelectorAll(".intro-figure")].filter(
+    (el) => el instanceof HTMLElement,
+  );
   logo.style.opacity = "1";
 
-  if (mark instanceof HTMLElement) {
-    await animate(mark, { scale: [1.2, 1] }, { type: "spring", bounce: 0.5, visualDuration: 0.1 })
-      .finished;
-  }
+  const offsets = computeFigureOffsets(figures, logo);
+
+  await animate([
+    ...(mark instanceof HTMLElement
+      ? [[mark, { scale: [1.4, 1], rotate: [0, -5] }, LOGO_ENTRY_SPRING]]
+      : []),
+    ...buildOffsetSegments(offsets, "out"),
+    ...buildOffsetSegments(offsets, "in"),
+  ]).finished;
 
   await sleep(LOGO_HOLD_MS);
 }
 
 /**
- * Slide the white overlay up like a curtain; kick off the digit dance as it clears.
+ * Figures offset away from the logo, toward whichever corner they're
+ * already closest to, then spring back into place. Rotation tips from
+ * the bottom-inner corner so top and bottom figures lean the same way.
+ * @param {HTMLElement[]} figures
+ * @param {HTMLElement} logo
+ */
+function computeFigureOffsets(figures, logo) {
+  const { x: logoCx, y: logoCy } = rectCenter(logo.getBoundingClientRect());
+
+  return figures.map((figure) => {
+    const rect = figure.getBoundingClientRect();
+    const { x: fx, y: fy } = rectCenter(rect);
+    const toLeft = fx < logoCx;
+    const toTop = fy < logoCy;
+    const offset = Math.round(Math.min(rect.width, rect.height) * FIGURE_OFFSET_RATIO);
+
+    // Plant on the bottom-inner corner so every figure tips from its feet.
+    figure.style.transformOrigin = `${toLeft ? "100%" : "0%"} 100%`;
+
+    // Tip outward: left figures lean left (−), right lean right (+).
+    const rotate = toLeft ? -FIGURE_ROTATE : FIGURE_ROTATE;
+
+    return {
+      figure,
+      x: toLeft ? -offset : offset,
+      y: toTop ? -offset : offset,
+      scale: FIGURE_SCALE,
+      rotate,
+    };
+  });
+}
+
+/** @param {DOMRect} rect */
+function rectCenter(rect) {
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+/**
+ * "out" offsets figures away first; "in" springs them back.
+ * First "out" starts just after the logo (`<0.01`); first "in" waits for
+ * "out" to finish (no `at`). Remaining segments in each phase use `<`.
+ * @param {Array<{ figure: HTMLElement, x: number, y: number, scale: number, rotate: number }>} offsets
+ * @param {"out" | "in"} direction
+ */
+function buildOffsetSegments(offsets, direction) {
+  const isOut = direction === "out";
+  const transition = isOut ? FIGURE_OUT : FIGURE_IN_SPRING;
+
+  return offsets.map(({ figure, x, y, scale, rotate }, i) => {
+    const rest = { scale, x, y, rotate };
+    const home = { scale: 1, x: 0, y: 0, rotate: 0 };
+    const from = isOut ? home : rest;
+    const to = isOut ? rest : home;
+
+    const options = { ...transition };
+    if (i > 0) options.at = "<";
+    else if (isOut) options.at = "<0.01";
+
+    return [
+      figure,
+      {
+        scale: [from.scale, to.scale],
+        x: [from.x, to.x],
+        y: [from.y, to.y],
+        rotate: [from.rotate, to.rotate],
+      },
+      options,
+    ];
+  });
+}
+
+/**
+ * Clip the white overlay away bottom→top; kick off the digit dance as it clears.
  * @param {HTMLElement} intro
  * @param {HTMLElement} app
  * @param {Array<{ destroy: () => void }>} [players]
  * @param {(() => void) | undefined} [onReveal]
  */
-async function slideOutToTimer(intro, app, players = [], onReveal) {
+async function clipOutToTimer(intro, app, players = [], onReveal) {
   const { animate } = await import("motion");
 
   intro.classList.add("is-exiting");
@@ -156,9 +251,12 @@ async function slideOutToTimer(intro, app, players = [], onReveal) {
 
   await animate(
     intro,
-    { y: ["0%", "-100%"] },
     {
-      duration: 0.2,
+      clipPath: ["inset(0% 0% 0% 0%)", "inset(0% 0% 100% 0%)"],
+      y: [0, -5],
+    },
+    {
+      duration: 0.3,
       ease: [0.4, 0, 0.2, 1],
     },
   ).finished;
@@ -168,7 +266,7 @@ async function slideOutToTimer(intro, app, players = [], onReveal) {
 }
 
 /**
- * Runs the brand intro when online, then slides up to reveal the timer.
+ * Runs the brand intro when online, then clips away bottom→top to reveal the timer.
  * Offline skips straight to the timer (intro assets are not SW-cached).
  * Call after the timer has been enhanced; pass onReveal to start the digit dance
  * as the overlay begins to clear.
@@ -221,7 +319,7 @@ export async function playIntro(
     await sleep(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
     const { animate } = await import("motion");
     await showLogotype(intro, animate);
-    await slideOutToTimer(intro, app, [], onReveal);
+    await clipOutToTimer(intro, app, [], onReveal);
     return;
   }
 
@@ -247,5 +345,5 @@ export async function playIntro(
 
   ensureLogo();
   await logoPromise;
-  await slideOutToTimer(intro, app, players, onReveal);
+  await clipOutToTimer(intro, app, players, onReveal);
 }

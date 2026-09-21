@@ -6,18 +6,9 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
   <div class="intro-grid">
     {
       characters.map((id) => (
-        <div
-          class="intro-panel"
-          data-src={`/wrrk-${id}.json`}
-        >
+        <div class="intro-panel" data-src={`/wrrk-${id}.json`}>
           <div class="intro-figure">
-            <img
-              src={`/wrrk-${id}.svg`}
-              alt=""
-              width="144"
-              height="144"
-              decoding="async"
-            />
+            <img src={`/wrrk-${id}.svg`} alt="" width="144" height="144" decoding="async" />
           </div>
         </div>
       ))
@@ -54,6 +45,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     min-height: 0;
     container-type: size;
     visibility: hidden;
+    overflow: visible;
   }
 
   .intro-panel.is-shown {
@@ -71,6 +63,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     width: min(36vmin, 100%);
     height: auto;
     aspect-ratio: 1;
+    overflow: visible;
   }
 
   .intro-figure :global(img),
@@ -79,6 +72,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     width: 100%;
     height: 100%;
     object-fit: contain;
+    overflow: visible;
   }
 
   /* Mounted by intro.js — no Astro scope attr, so :global */
@@ -89,6 +83,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     height: 100%;
     opacity: 0;
     pointer-events: none;
+    overflow: visible;
   }
 
   .intro-figure :global(.intro-lottie.is-ready) {
