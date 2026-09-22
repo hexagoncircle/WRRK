@@ -19,6 +19,15 @@ function hold(ms) {
   });
 }
 
+/** Resolves after the next frame has been painted (static intro SVGs first). */
+function afterNextPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
 /**
  * @returns {boolean}
  */
@@ -31,27 +40,24 @@ function finishIntro() {
 }
 
 /**
- * @param {HTMLElement} intro
  * @param {HTMLElement} app
  * @param {(() => void) | undefined} onReveal
  */
-function revealImmediate(intro, app, onReveal) {
+function unlockApp(app, onReveal) {
   onReveal?.();
   app.removeAttribute("inert");
   app.removeAttribute("aria-hidden");
-  intro.remove();
-  finishIntro();
 }
 
 /**
- * Reveal the timer without an intro shell (missing #intro).
+ * Reveal the timer; remove the intro shell when present.
  * @param {HTMLElement} app
  * @param {(() => void) | undefined} onReveal
+ * @param {HTMLElement} [intro]
  */
-function revealWithoutIntro(app, onReveal) {
-  onReveal?.();
-  app.removeAttribute("inert");
-  app.removeAttribute("aria-hidden");
+function revealApp(app, onReveal, intro) {
+  unlockApp(app, onReveal);
+  intro?.remove();
   finishIntro();
 }
 
@@ -250,14 +256,12 @@ function buildOffsetSegments(offsets, direction) {
  * @param {Array<{ destroy: () => void }>} [players]
  * @param {(() => void) | undefined} [onReveal]
  */
-async function clipOutToTimer(intro, app, players = [], onReveal) {
+async function revealTimer(intro, app, players = [], onReveal) {
   const { animate } = await import("motion");
 
   intro.classList.add("is-exiting");
-  onReveal?.();
+  unlockApp(app, onReveal);
   finishIntro();
-  app.removeAttribute("inert");
-  app.removeAttribute("aria-hidden");
 
   await animate(
     intro,
@@ -289,20 +293,17 @@ export async function playIntro(
   { onReveal } = {},
 ) {
   const intro = document.querySelector("#intro");
+  const introEl = intro instanceof HTMLElement ? intro : undefined;
   if (!(app instanceof HTMLElement)) return;
 
   // Missing shell, offline, reduced motion, or already done → timer only.
   if (
-    !(intro instanceof HTMLElement) ||
+    !introEl ||
     !navigator.onLine ||
     prefersReducedMotion() ||
     document.documentElement.dataset.intro === "done"
   ) {
-    if (intro instanceof HTMLElement) {
-      revealImmediate(intro, app, onReveal);
-    } else {
-      revealWithoutIntro(app, onReveal);
-    }
+    revealApp(app, onReveal, introEl);
     return;
   }
 
@@ -310,13 +311,16 @@ export async function playIntro(
   app.setAttribute("aria-hidden", "true");
   document.documentElement.dataset.intro = "pending";
 
-  const panels = [...intro.querySelectorAll(".intro-panel")].filter(
+  const panels = [...introEl.querySelectorAll(".intro-panel")].filter(
     (el) => el instanceof HTMLElement,
   );
   if (!panels.length) {
-    revealImmediate(intro, app, onReveal);
+    revealApp(app, onReveal, introEl);
     return;
   }
+
+  // Let static SVG stills paint before downloading/parsing Lottie + JSON.
+  await afterNextPaint();
 
   // Load player + JSON in parallel so Lottie does not gate the animation fetches.
   /** @type {typeof import('lottie-web/build/player/lottie_light.js').default} */
@@ -337,8 +341,8 @@ export async function playIntro(
     // Still SVGs are already in the template; hold then logo + clip without Lottie.
     await hold(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
     const { animate } = await import("motion");
-    await showLogotype(intro, animate);
-    await clipOutToTimer(intro, app, [], onReveal);
+    await showLogotype(introEl, animate);
+    await revealTimer(introEl, app, [], onReveal);
     return;
   }
 
@@ -348,11 +352,10 @@ export async function playIntro(
   /** @type {Promise<void> | null} */
   let logoPromise = null;
   const ensureLogo = () => {
-    logoPromise ??= motionReady.then(({ animate }) => showLogotype(intro, animate));
+    logoPromise ??= motionReady.then(({ animate }) => showLogotype(introEl, animate));
   };
 
-  // Each Lottie starts as soon as its cell is on screen.
-  // Logotype starts LOGO_LEAD_MS before the last character finishes.
+  // All panels play in parallel; logo starts LOGO_LEAD_MS before the last finishes.
   const lastPanel = panels.at(-1);
   const players = await Promise.all(
     panels.map((panel, i) =>
@@ -367,5 +370,5 @@ export async function playIntro(
 
   ensureLogo();
   await logoPromise;
-  await clipOutToTimer(intro, app, players, onReveal);
+  await revealTimer(introEl, app, players, onReveal);
 }
