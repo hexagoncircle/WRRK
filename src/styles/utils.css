@@ -20,6 +20,7 @@
   gap: var(--btn-padding);
   place-items: center;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 
   &:focus-visible {
     outline-offset: -2px;

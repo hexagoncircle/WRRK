@@ -40,6 +40,12 @@
     /* Wide timer: clock + rings in a row */
     --ui-scale: min(var(--fit-w) / 36, var(--fit-h) / 16);
   }
+
+  /* Phone landscape: denser UI */
+  @media (min-aspect-ratio: 3/2) and (height <= 28rem) {
+    --page-pad: 1rem;
+    --ui-scale: min(var(--fit-w) / 34, var(--fit-h) / 14);
+  }
 }
 
 html {
