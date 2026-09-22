@@ -56,16 +56,31 @@ function revealWithoutIntro(app, onReveal) {
 }
 
 /**
+ * Fetch a Lottie JSON; null on any failure (panel keeps its static SVG).
+ * @param {string} src
+ * @returns {Promise<object | null>}
+ */
+async function fetchAnimationData(src) {
+  try {
+    const res = await fetch(src);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Play a panel's Lottie once. Optional onNearEnd fires once, LOGO_LEAD_MS
  * before complete (scheduled from duration on DOMLoaded).
  * @param {HTMLElement} panel
  * @param {typeof import('lottie-web/build/player/lottie_light.js').default} lottie
+ * @param {object | null | undefined} animationData
  * @param {(() => void) | undefined} [onNearEnd]
  * @returns {Promise<{ destroy: () => void }>}
  */
-function playAnimation(panel, lottie, onNearEnd) {
-  const src = panel.dataset.src;
-  if (!src) {
+function playAnimation(panel, lottie, animationData, onNearEnd) {
+  if (!animationData) {
     onNearEnd?.();
     return Promise.resolve({ destroy: () => {} });
   }
@@ -80,7 +95,7 @@ function playAnimation(panel, lottie, onNearEnd) {
       renderer: "svg",
       loop: false,
       autoplay: false,
-      path: src,
+      animationData,
       rendererSettings: {
         progressiveLoad: true,
         hideOnTransparent: true,
@@ -303,10 +318,21 @@ export async function playIntro(
     return;
   }
 
+  // Load player + JSON in parallel so Lottie does not gate the animation fetches.
+  /** @type {typeof import('lottie-web/build/player/lottie_light.js').default} */
   let lottie;
+  /** @type {(object | null)[]} */
+  let animationDatas;
   try {
-    const lottieMod = await import("lottie-web/build/player/lottie_light.js");
+    const [lottieMod, ...datas] = await Promise.all([
+      import("lottie-web/build/player/lottie_light.js"),
+      ...panels.map((panel) => {
+        const src = panel.dataset.src;
+        return src ? fetchAnimationData(src) : Promise.resolve(null);
+      }),
+    ]);
     lottie = lottieMod.default;
+    animationDatas = datas;
   } catch {
     // Still SVGs are already in the template; hold then logo + clip without Lottie.
     await hold(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
@@ -329,8 +355,13 @@ export async function playIntro(
   // Logotype starts LOGO_LEAD_MS before the last character finishes.
   const lastPanel = panels.at(-1);
   const players = await Promise.all(
-    panels.map((panel) =>
-      playAnimation(panel, lottie, panel === lastPanel ? ensureLogo : undefined),
+    panels.map((panel, i) =>
+      playAnimation(
+        panel,
+        lottie,
+        animationDatas[i],
+        panel === lastPanel ? ensureLogo : undefined,
+      ),
     ),
   );
 
