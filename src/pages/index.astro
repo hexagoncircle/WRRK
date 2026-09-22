@@ -21,8 +21,7 @@ import {
     <meta charset="utf-8" />
     <script is:inline>
       const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-      document.documentElement.dataset.intro =
-        navigator.onLine && !reduce ? "pending" : "done";
+      document.documentElement.dataset.intro = navigator.onLine && !reduce ? "pending" : "done";
     </script>
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

@@ -22,7 +22,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     <div class="controls">
       <button type="button" class="btn reset">
         <Icon name="reset" aria-hidden="true" />
-        <span class="label sr-only">Reset</span>
+        <span class="label">Reset</span>
       </button>
       <button type="button" class="btn playback" data-action="play">
         <Icon name="pause" aria-hidden="true" />
@@ -87,6 +87,7 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     margin: auto;
     isolation: isolate;
     user-select: none;
+    transform: translateZ(0);
   }
 
   .status {
@@ -113,10 +114,20 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
     gap: 0.3em;
   }
 
-  [data-icon="clock"] {
+  [data-icon] {
+    width: var(--size, 1em);
+    height: var(--size, 1em);
+  }
+
+  [data-icon="clock"],
+  [data-icon="reset"] {
+    --size: 0.9em;
+    translate: 0 0.02em;
+  }
+
+  [data-icon="play"] {
     --size: 0.8em;
-    width: var(--size);
-    height: var(--size);
+    translate: -0.025em;
   }
 
   :global([data-status]:not([data-status="idle"])) :global([data-icon="clock"]) {
@@ -125,25 +136,23 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
 
   .controls {
     display: flex;
-    align-items: start;
-    font-size: 0.8em;
+    align-items: center;
     margin-inline-start: auto;
+    block-size: 1lh;
   }
 
-  .controls [data-icon] {
-    --size: 0.9em;
-    width: var(--size);
-    height: var(--size);
+  .controls button {
+    margin-inline-start: calc(var(--btn-padding) * -1);
+    margin-block: calc(var(--btn-padding) * -1);
   }
 
   .playback {
     position: static;
     cursor: pointer;
     opacity: 0;
-
-    [data-icon="play"] {
-      translate: -0.05em;
-    }
+    margin-inline-end: -0.025em;
+    inline-size: 1lh;
+    block-size: 1lh;
 
     &::before {
       content: "";
@@ -179,12 +188,22 @@ const totalTime = formatMSS(totalWorkoutSeconds(DEFAULT_CONFIG));
   }
 
   :global([data-status="paused"]) {
+    .round {
+      display: none;
+    }
+
+    .controls {
+      flex: 1;
+      justify-content: space-between;
+      align-items: center;
+    }
+
     .playback {
       opacity: 1;
     }
 
     .reset {
-      display: block;
+      display: inline-flex;
     }
   }
 

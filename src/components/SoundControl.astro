@@ -84,6 +84,7 @@ const { class: className, ...rest } = Astro.props;
     --size: max(0.9em, 1.5rem);
     width: var(--size);
     height: var(--size);
+    transform: translateZ(0);
     transition: translate 200ms steps(2, jump-start);
 
     :is(line, path) {

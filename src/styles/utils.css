@@ -11,17 +11,18 @@
 }
 
 .btn {
+  --btn-padding: 0.3em;
   all: unset;
   cursor: pointer;
-  border-radius: 0.2em;
-  margin-block: -0.15em;
-  padding: 0.3em;
-  aspect-ratio: 1;
+  border-radius: 0.25em;
+  padding: var(--btn-padding);
   display: grid;
+  gap: var(--btn-padding);
   place-items: center;
   touch-action: manipulation;
 
   &:focus-visible {
-    background-color: var(--color-fg-subtle);
+    outline-offset: -2px;
+    outline: 3px solid oklch(62.3% 0.214 259.815);
   }
 }

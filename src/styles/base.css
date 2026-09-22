@@ -12,7 +12,7 @@
 :root {
   --color-bg: #1b1b1b;
   --color-fg: #ffffff;
-  --color-fg-subtle: #323232;
+  --color-fg-subtle: #272727;
   --color-fg-muted: #757575;
   --color-work: #ff1e65;
   --color-rest: #4effb5;
@@ -48,6 +48,7 @@ html {
 }
 
 body {
+  overflow-x: clip;
   display: flex;
   width: 100%;
   min-height: 100vh;
