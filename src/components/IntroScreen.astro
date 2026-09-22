@@ -7,13 +7,13 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     {
       characters.map((id) => (
         <div class="intro-panel" data-src={`/wrrk-${id}.json`}>
-          <img src={`/wrrk-${id}.svg`} alt="" width="144" height="144" decoding="async" />
+          <img src={`/wrrk-${id}.svg`} alt="" width="144" height="144" />
         </div>
       ))
     }
   </div>
   <div class="intro-logotype">
-    <img src="/wrrk-logotype.svg" alt="" width="144" height="108" decoding="async" />
+    <img src="/wrrk-logotype.svg" alt="" width="144" height="108" fetchpriority="high" />
   </div>
 </div>
 
@@ -67,7 +67,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     display: grid;
     place-items: center;
     pointer-events: none;
-    opacity: 0;
+    opacity: 0.001;
 
     img {
       display: block;
