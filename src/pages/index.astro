@@ -51,7 +51,16 @@ import {
     <meta name="twitter:image" content="https://wrrk.app/og-image.png" />
     <link rel="preconnect" href="https://use.typekit.net" crossorigin />
     <link rel="preconnect" href="https://p.typekit.net" crossorigin />
-    <link rel="stylesheet" href="https://use.typekit.net/yys8fwy.css" />
+    <!-- async Typekit: avoid render-block -->
+    <link
+      rel="preload"
+      href="https://use.typekit.net/yys8fwy.css"
+      as="style"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link rel="stylesheet" href="https://use.typekit.net/yys8fwy.css" />
+    </noscript>
   </head>
   <body>
     <IntroScreen />
