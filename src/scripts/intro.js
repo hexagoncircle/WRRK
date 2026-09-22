@@ -19,15 +19,6 @@ function hold(ms) {
   });
 }
 
-/** Resolves after the next frame has been painted (static intro SVGs first). */
-function afterNextPaint() {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
-    });
-  });
-}
-
 /**
  * @returns {boolean}
  */
@@ -62,31 +53,17 @@ function revealApp(app, onReveal, intro) {
 }
 
 /**
- * Fetch a Lottie JSON; null on any failure (panel keeps its static SVG).
- * @param {string} src
- * @returns {Promise<object | null>}
- */
-async function fetchAnimationData(src) {
-  try {
-    const res = await fetch(src);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Play a panel's Lottie once. Optional onNearEnd fires once, LOGO_LEAD_MS
- * before complete (scheduled from duration on DOMLoaded).
+ * before complete (scheduled from duration on DOMLoaded). Static SVG stays
+ * until DOMLoaded, then swaps in.
  * @param {HTMLElement} panel
  * @param {typeof import('lottie-web/build/player/lottie_light.js').default} lottie
- * @param {object | null | undefined} animationData
  * @param {(() => void) | undefined} [onNearEnd]
  * @returns {Promise<{ destroy: () => void }>}
  */
-function playAnimation(panel, lottie, animationData, onNearEnd) {
-  if (!animationData) {
+function playAnimation(panel, lottie, onNearEnd) {
+  const src = panel.dataset.src;
+  if (!src) {
     onNearEnd?.();
     return Promise.resolve({ destroy: () => {} });
   }
@@ -101,7 +78,7 @@ function playAnimation(panel, lottie, animationData, onNearEnd) {
       renderer: "svg",
       loop: false,
       autoplay: false,
-      animationData,
+      path: src,
       rendererSettings: {
         progressiveLoad: true,
         hideOnTransparent: true,
@@ -293,17 +270,16 @@ export async function playIntro(
   { onReveal } = {},
 ) {
   const intro = document.querySelector("#intro");
-  const introEl = intro instanceof HTMLElement ? intro : undefined;
   if (!(app instanceof HTMLElement)) return;
 
   // Missing shell, offline, reduced motion, or already done → timer only.
   if (
-    !introEl ||
+    !(intro instanceof HTMLElement) ||
     !navigator.onLine ||
     prefersReducedMotion() ||
     document.documentElement.dataset.intro === "done"
   ) {
-    revealApp(app, onReveal, introEl);
+    revealApp(app, onReveal, intro instanceof HTMLElement ? intro : undefined);
     return;
   }
 
@@ -311,38 +287,24 @@ export async function playIntro(
   app.setAttribute("aria-hidden", "true");
   document.documentElement.dataset.intro = "pending";
 
-  const panels = [...introEl.querySelectorAll(".intro-panel")].filter(
+  const panels = [...intro.querySelectorAll(".intro-panel")].filter(
     (el) => el instanceof HTMLElement,
   );
   if (!panels.length) {
-    revealApp(app, onReveal, introEl);
+    revealApp(app, onReveal, intro);
     return;
   }
 
-  // Let static SVG stills paint before downloading/parsing Lottie + JSON.
-  await afterNextPaint();
-
-  // Load player + JSON in parallel so Lottie does not gate the animation fetches.
   /** @type {typeof import('lottie-web/build/player/lottie_light.js').default} */
   let lottie;
-  /** @type {(object | null)[]} */
-  let animationDatas;
   try {
-    const [lottieMod, ...datas] = await Promise.all([
-      import("lottie-web/build/player/lottie_light.js"),
-      ...panels.map((panel) => {
-        const src = panel.dataset.src;
-        return src ? fetchAnimationData(src) : Promise.resolve(null);
-      }),
-    ]);
-    lottie = lottieMod.default;
-    animationDatas = datas;
+    lottie = (await import("lottie-web/build/player/lottie_light.js")).default;
   } catch {
     // Still SVGs are already in the template; hold then logo + clip without Lottie.
     await hold(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
     const { animate } = await import("motion");
-    await showLogotype(introEl, animate);
-    await revealTimer(introEl, app, [], onReveal);
+    await showLogotype(intro, animate);
+    await revealTimer(intro, app, [], onReveal);
     return;
   }
 
@@ -352,23 +314,18 @@ export async function playIntro(
   /** @type {Promise<void> | null} */
   let logoPromise = null;
   const ensureLogo = () => {
-    logoPromise ??= motionReady.then(({ animate }) => showLogotype(introEl, animate));
+    logoPromise ??= motionReady.then(({ animate }) => showLogotype(intro, animate));
   };
 
   // All panels play in parallel; logo starts LOGO_LEAD_MS before the last finishes.
   const lastPanel = panels.at(-1);
   const players = await Promise.all(
-    panels.map((panel, i) =>
-      playAnimation(
-        panel,
-        lottie,
-        animationDatas[i],
-        panel === lastPanel ? ensureLogo : undefined,
-      ),
+    panels.map((panel) =>
+      playAnimation(panel, lottie, panel === lastPanel ? ensureLogo : undefined),
     ),
   );
 
   ensureLogo();
   await logoPromise;
-  await revealTimer(introEl, app, players, onReveal);
+  await revealTimer(intro, app, players, onReveal);
 }
