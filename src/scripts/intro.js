@@ -1,13 +1,11 @@
-const HOLD_MS = 2000;
 const LOGO_HOLD_MS = 800;
-const LOGO_LEAD_MS = 630;
+const LOGO_LEAD_MS = 600;
 const LOTTIE_TIMEOUT_MS = 8000;
-const LOGO_ENTRY_SPRING = { type: "spring", bounce: 0.6, visualDuration: 0.1 };
-const FIGURE_OUT = { duration: 0.1 };
-const FIGURE_IN_SPRING = { type: "spring", bounce: 0.6, visualDuration: 0.15 };
-const FIGURE_SCALE = 1.1;
-const FIGURE_OFFSET_RATIO = 0.03;
-const FIGURE_ROTATE = 3;
+const POSTER_FPS = 12;
+const LOGO_ENTRY = 0.42;
+const FIGURE_OUT = 0.1;
+const FIGURE_IN = 0.3;
+const FIGURE_JUMP = 1.1;
 
 /**
  * @param {number} ms
@@ -54,8 +52,8 @@ function revealApp(app, onReveal, intro) {
 
 /**
  * Play a panel's Lottie once. Optional onNearEnd fires once, LOGO_LEAD_MS
- * before complete (scheduled from duration on DOMLoaded). Static SVG stays
- * until DOMLoaded, then swaps in.
+ * before complete (scheduled from duration on DOMLoaded). The poster image
+ * stays until DOMLoaded, then the Lottie SVG in the panel replaces it.
  * @param {HTMLElement} panel
  * @param {typeof import('lottie-web/build/player/lottie_light.js').default} lottie
  * @param {(() => void) | undefined} [onNearEnd]
@@ -68,13 +66,9 @@ function playAnimation(panel, lottie, onNearEnd) {
     return Promise.resolve({ destroy: () => {} });
   }
 
-  const animRoot = document.createElement("div");
-  animRoot.hidden = true;
-  panel.append(animRoot);
-
   return new Promise((resolve) => {
     const anim = lottie.loadAnimation({
-      container: animRoot,
+      container: panel,
       renderer: "svg",
       loop: false,
       autoplay: false,
@@ -111,10 +105,17 @@ function playAnimation(panel, lottie, onNearEnd) {
 
     anim.addEventListener("complete", finish);
     anim.addEventListener("data_failed", finish);
+    // SVG is appended during config, before the next paint. Hide it so the
+    // poster stays until DOMLoaded swaps it in.
+    anim.addEventListener("config_ready", () => {
+      panel.querySelector(":scope > svg")?.setAttribute("hidden", "");
+    });
     anim.addEventListener("DOMLoaded", () => {
       if (settled) return;
-      animRoot.hidden = false;
-      panel.replaceChildren(animRoot);
+      const svg = panel.querySelector(":scope > svg");
+      panel.querySelector(":scope > img")?.remove();
+      svg?.removeAttribute("hidden");
+      anim.setSubframe(false);
       anim.play();
       if (onNearEnd) {
         const durationMs = (anim.totalFrames / anim.frameRate) * 1000;
@@ -125,7 +126,41 @@ function playAnimation(panel, lottie, onNearEnd) {
 }
 
 /**
+ * @param {number} t progress in 0..1
+ */
+function linear(t) {
+  return t;
+}
+
+/**
+ * Penner ease-out elastic. Overshoots, then settles.
+ * @param {number} t progress in 0..1
+ */
+function elasticOut(t) {
+  if (t === 0 || t === 1) return t;
+  const period = 0.3;
+  return Math.pow(2, -10 * t) * Math.sin(((t - period / 4) * (2 * Math.PI)) / period) + 1;
+}
+
+/**
+ * Sample an ease on the same 12fps grid as the Lottie clips.
+ * @param {number} duration seconds
+ * @param {(t: number) => number} ease
+ */
+function posterized(duration, ease) {
+  const totalFrames = Math.max(1, Math.round(POSTER_FPS * duration));
+  return {
+    duration,
+    ease: (/** @type {number} */ t) => {
+      const steppedTime = Math.round(t * totalFrames) / totalFrames;
+      return ease(steppedTime);
+    },
+  };
+}
+
+/**
  * Slam the logotype in over the characters, then hold.
+ * Elastic tweens step at 12fps so the slam matches the Lottie clips.
  * @param {HTMLElement} intro
  * @param {typeof import('motion').animate} animate
  */
@@ -133,97 +168,17 @@ async function showLogotype(intro, animate) {
   const logo = intro.querySelector(".intro-logotype");
   if (!(logo instanceof HTMLElement)) return;
 
-  const mark = logo.querySelector("img");
-  const figures = [...intro.querySelectorAll(".intro-panel")].filter(
-    (el) => el instanceof HTMLElement,
-  );
+  const figures = intro.querySelectorAll(".intro-panel");
   logo.style.opacity = "1";
 
-  const offsets = computeFigureOffsets(figures, logo);
-
+  // Figures pop with the logo, then spring back after that pop finishes.
   await animate([
-    ...(mark instanceof HTMLElement
-      ? [[mark, { scale: [1.4, 1], rotate: [0, -5] }, LOGO_ENTRY_SPRING]]
-      : []),
-    ...buildOffsetSegments(offsets, "out"),
-    ...buildOffsetSegments(offsets, "in"),
+    [logo, { scale: [1.4, 1], rotate: [0, -5] }, posterized(LOGO_ENTRY, elasticOut)],
+    [figures, { scale: [1, FIGURE_JUMP] }, { ...posterized(FIGURE_OUT, linear), at: "<0.01" }],
+    [figures, { scale: [FIGURE_JUMP, 1] }, posterized(FIGURE_IN, elasticOut)],
   ]).finished;
 
   await hold(LOGO_HOLD_MS);
-}
-
-/**
- * Figures offset away from the logo, toward whichever corner they're
- * already closest to, then spring back into place. Rotation tips from
- * the bottom-inner corner so top and bottom figures lean the same way.
- * @param {HTMLElement[]} figures
- * @param {HTMLElement} logo
- */
-function computeFigureOffsets(figures, logo) {
-  const { x: logoCx, y: logoCy } = rectCenter(logo);
-
-  return figures.map((figure) => {
-    const rect = figure.getBoundingClientRect();
-    const fx = rect.left + rect.width / 2;
-    const fy = rect.top + rect.height / 2;
-    const toLeft = fx < logoCx;
-    const toTop = fy < logoCy;
-    const offset = Math.round(Math.min(rect.width, rect.height) * FIGURE_OFFSET_RATIO);
-
-    // Plant on the bottom-inner corner so every figure tips from its feet.
-    figure.style.transformOrigin = `${toLeft ? "100%" : "0%"} 100%`;
-
-    // Tip outward: left figures lean left (−), right lean right (+).
-    const rotate = toLeft ? -FIGURE_ROTATE : FIGURE_ROTATE;
-
-    return {
-      figure,
-      x: toLeft ? -offset : offset,
-      y: toTop ? -offset : offset,
-      scale: FIGURE_SCALE,
-      rotate,
-    };
-  });
-}
-
-/** @param {HTMLElement} el */
-function rectCenter(el) {
-  const rect = el.getBoundingClientRect();
-  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-}
-
-/**
- * "out" offsets figures away first; "in" springs them back.
- * First "out" starts just after the logo (`<0.01`); first "in" waits for
- * "out" to finish (no `at`). Remaining segments in each phase use `<`.
- * @param {Array<{ figure: HTMLElement, x: number, y: number, scale: number, rotate: number }>} offsets
- * @param {"out" | "in"} direction
- */
-function buildOffsetSegments(offsets, direction) {
-  const isOut = direction === "out";
-  const transition = isOut ? FIGURE_OUT : FIGURE_IN_SPRING;
-
-  return offsets.map(({ figure, x, y, scale, rotate }, i) => {
-    const rest = { scale, x, y, rotate };
-    const home = { scale: 1, x: 0, y: 0, rotate: 0 };
-    const from = isOut ? home : rest;
-    const to = isOut ? rest : home;
-
-    const options = { ...transition };
-    if (i > 0) options.at = "<";
-    else if (isOut) options.at = "<0.01";
-
-    return [
-      figure,
-      {
-        scale: [from.scale, to.scale],
-        x: [from.x, to.x],
-        y: [from.y, to.y],
-        rotate: [from.rotate, to.rotate],
-      },
-      options,
-    ];
-  });
 }
 
 /**
@@ -287,9 +242,8 @@ export async function playIntro(
   app.setAttribute("aria-hidden", "true");
   document.documentElement.dataset.intro = "pending";
 
-  const panels = [...intro.querySelectorAll(".intro-panel")].filter(
-    (el) => el instanceof HTMLElement,
-  );
+  const panels = [...intro.querySelectorAll(".intro-panel")];
+
   if (!panels.length) {
     revealApp(app, onReveal, intro);
     return;
@@ -300,10 +254,9 @@ export async function playIntro(
   try {
     lottie = (await import("lottie-web/build/player/lottie_light.js")).default;
   } catch {
-    // Still SVGs are already in the template; hold then logo + clip without Lottie.
-    await hold(Math.max(0, HOLD_MS - LOGO_LEAD_MS));
-    const { animate } = await import("motion");
-    await showLogotype(intro, animate);
+    // Lottie didn't load: show the still logotype, then clip the overlay away.
+    const logo = intro.querySelector(".intro-logotype");
+    if (logo instanceof HTMLElement) logo.style.opacity = "1";
     await revealTimer(intro, app, [], onReveal);
     return;
   }

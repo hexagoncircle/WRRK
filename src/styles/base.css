@@ -11,6 +11,7 @@
 
 :root {
   --color-bg: #1b1b1b;
+  --color-bg-inverse: #ffffff;
   --color-fg: #ffffff;
   --color-fg-subtle: #272727;
   --color-fg-muted: #757575;
