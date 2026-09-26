@@ -95,18 +95,18 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     width: 58vmin;
     height: auto;
     translate: -50% -50%;
+    rotate: 0deg;
+    scale: 1;
     opacity: 0.001;
-    animation: logo-slam 1s both;
-    animation-play-state: paused;
   }
 
   .intro-screen.is-slamming .intro-logotype {
-    opacity: 1;
-    animation-play-state: running;
+    animation: logo-slam 1s both;
   }
 
   @keyframes logo-slam {
     from {
+      opacity: 1;
       scale: 1.8;
       rotate: 0deg;
       /* prettier-ignore */
@@ -115,6 +115,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
 
     34%,
     100% {
+      opacity: 1;
       scale: 1;
       rotate: -5deg;
     }
