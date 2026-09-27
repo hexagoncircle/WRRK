@@ -1,4 +1,4 @@
-const CACHE_NAME = "wrrk-v8";
+const CACHE_NAME = "wrrk-v9";
 const FONT_HOSTS = new Set(["use.typekit.net", "p.typekit.net"]);
 const PRECACHE = [
   "/",
@@ -133,26 +133,6 @@ async function precachePageAssets(cache, path) {
 
 /**
  * @param {Request} request
- */
-async function revalidate(request) {
-  try {
-    const response = await fetch(request);
-    if (!response.ok || response.type === "opaque") return;
-    const url = new URL(request.url);
-    if (isIntroAsset(url)) return;
-    const cache = await caches.open(CACHE_NAME);
-    await cachePut(cache, request, response.clone());
-    if (request.mode === "navigate") {
-      await cachePut(cache, "/", response.clone());
-      await cachePut(cache, "/index.html", response.clone());
-    }
-  } catch {
-    // Ignore background refresh failures.
-  }
-}
-
-/**
- * @param {Request} request
  * @param {{ updateShell?: boolean }} [options]
  */
 async function fetchAndCache(request, { updateShell = false } = {}) {
@@ -205,18 +185,27 @@ self.addEventListener("fetch", (event) => {
   const isNavigate = request.mode === "navigate";
   const isImmutableAsset = url.origin === self.location.origin && url.pathname.startsWith("/_astro/");
 
+  // A deploy changes the HTML. Fetch it, then keep a copy for offline.
+  if (isNavigate) {
+    event.respondWith(
+      fetchAndCache(request, { updateShell: true }).catch(async (error) => {
+        const fallback = await matchCached(request);
+        if (fallback) return fallback;
+        throw error;
+      }),
+    );
+    return;
+  }
+
   event.respondWith(
     (async () => {
-      // Navigations + hashed assets: cache-first so iOS cold starts work offline.
-      if (isNavigate || isImmutableAsset) {
+      // Hashed assets are cache-first. A new document points at new URLs.
+      if (isImmutableAsset) {
         const cached = await matchCached(request);
-        if (cached) {
-          if (isNavigate) event.waitUntil(revalidate(request));
-          return cached;
-        }
+        if (cached) return cached;
 
         try {
-          return await fetchAndCache(request, { updateShell: isNavigate });
+          return await fetchAndCache(request);
         } catch (error) {
           const fallback = await matchCached(request);
           if (fallback) return fallback;
