@@ -74,7 +74,11 @@ async function main() {
   });
 
   await playIntro($app, {
-    onReveal: () => player.softReset(readConfig(), { lightUp: true }),
+    onReveal: () => {
+      // The curtain can finish before this module. Don't reset a timer they already started.
+      if ($app instanceof HTMLElement && $app.dataset.status && $app.dataset.status !== "idle") return;
+      player.softReset(readConfig(), { lightUp: true });
+    },
   });
 }
 

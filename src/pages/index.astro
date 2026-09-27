@@ -19,10 +19,6 @@ import {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <script is:inline>
-      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-      document.documentElement.dataset.intro = navigator.onLine && !reduce ? "pending" : "done";
-    </script>
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
@@ -108,19 +104,6 @@ import {
     </script>
   </body>
 </html>
-
-<style is:global>
-  /* Timer stays painted under the white intro so the digit dance can start before the curtain lifts. */
-  html[data-intro="pending"] #app {
-    pointer-events: none;
-  }
-
-  /* Offline / head script sets done before JS removes #intro — don't flash the overlay.
-     .is-exiting keeps the curtain visible while it clips away after finishIntro(). */
-  html[data-intro="done"] #intro:not(.is-exiting) {
-    display: none;
-  }
-</style>
 
 <style>
   .screen {

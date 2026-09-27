@@ -10,15 +10,30 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
       </div>
     ))
   }
-  <img
-    class="intro-logotype"
-    src="/wrrk-logotype.svg"
-    alt=""
-    width="144"
-    height="108"
-    fetchpriority="high"
-  />
+  <img class="intro-logotype" src="/wrrk-logotype.svg" alt="" width="144" height="108" />
 </div>
+
+<script is:inline>
+  (() => {
+    const intro = document.getElementById("intro");
+    if (!(intro instanceof HTMLElement)) return;
+
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!navigator.onLine || reduce) return;
+
+    const root = document.documentElement;
+    intro.dataset.status = "pending";
+    root.setAttribute("inert", "");
+
+    // Unlock if the module never leaves "pending". Once status is "playing",
+    // the module's animation fallback removes the curtain.
+    setTimeout(() => {
+      if (intro.dataset.status === "playing" || !intro.hasAttribute("data-status")) return;
+      delete intro.dataset.status;
+      root.removeAttribute("inert");
+    }, 8000);
+  })();
+</script>
 
 <style>
   .intro-screen {
@@ -28,26 +43,22 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     display: grid;
     width: 100%;
     height: 100%;
-    pointer-events: none;
     user-select: none;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     background: var(--color-bg-inverse);
     clip-path: inset(0% 0% 0% 0%);
-    transition: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    transition-property: clip-path, translate;
-  }
+    translate: 0 0;
 
-  .intro-screen.is-exiting {
-    clip-path: inset(0% 0% 100% 0%);
-    translate: 0 -5px;
+    &:not([data-status]) {
+      display: none;
+    }
   }
 
   .intro-panel {
     position: relative;
     place-self: center;
     width: min(35vmin, 100%);
-    animation: figure-jump 0.2s 0.06s both;
-    animation-play-state: paused;
+    scale: 1;
 
     > * {
       display: block;
@@ -60,7 +71,7 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
       overflow: visible;
     }
 
-    &.is-ready {
+    &[data-ready] {
       > img {
         display: none;
       }
@@ -68,22 +79,6 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
       > :global(svg) {
         display: block;
       }
-    }
-  }
-
-  .intro-screen.is-slamming .intro-panel {
-    animation-play-state: running;
-  }
-
-  @keyframes figure-jump {
-    0% {
-      scale: 1;
-    }
-    30% {
-      scale: 1.1;
-    }
-    100% {
-      scale: 1;
     }
   }
 
@@ -100,19 +95,46 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     opacity: 0.001;
   }
 
-  .intro-screen.is-slamming .intro-logotype {
-    animation: logo-slam 1s both;
+  @media (prefers-reduced-motion: no-preference) {
+    .intro-screen[data-status="playing"] {
+      animation: intro-exit 0.4s cubic-bezier(0.16, 1, 0.3, 1) 2.4s forwards;
+
+      .intro-logotype {
+        animation: logo-slam 1s 1.5s forwards;
+      }
+      .intro-panel {
+        animation: figure-jump 0.2s 1.56s forwards;
+      }
+    }
+  }
+
+  @keyframes figure-jump {
+    0% {
+      scale: 1;
+    }
+    30% {
+      scale: 1.1;
+    }
+    100% {
+      scale: 1;
+    }
+  }
+
+  @keyframes intro-exit {
+    to {
+      clip-path: inset(0% 0% 100% 0%);
+      translate: 0 -5px;
+    }
   }
 
   @keyframes logo-slam {
-    from {
+    0% {
       opacity: 1;
       scale: 1.8;
       rotate: 0deg;
       /* prettier-ignore */
       animation-timing-function: linear(0, 0.029 1.3%, 0.119 2.8%, 0.659 8.7%, 0.871 11.6%, 1.009 14.6%, 1.052 16.2%, 1.078 17.9%, 1.088 19.7%, 1.085 21.7%, 1.014 31.4%, 0.993 38%, 1.001 57.6%, 1);
     }
-
     34%,
     100% {
       opacity: 1;

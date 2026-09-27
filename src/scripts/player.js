@@ -450,7 +450,7 @@ export function enhancePlayer(root, options) {
       return;
     }
 
-    // Sound only in this turn. Engine/Motion run after so they can't stall
+    // Sound only in this turn. Engine and digit dance run after so they can't stall
     // AudioContext startup on the main thread.
     // Request wake lock in the same turn as the tap for reliability.
     if (engine.status === STATUS.idle) play("start");

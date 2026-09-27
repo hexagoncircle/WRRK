@@ -1,82 +1,72 @@
-const LOGO_LEAD_MS = 600;
-const LOTTIE_TIMEOUT_MS = 8000;
-
-/**
- * @param {number} ms
- * @returns {Promise<void>}
- */
-function hold(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
+/** @type {typeof import("lottie-web/build/player/lottie_light.js").default | undefined} */
+let lottie;
 
 /**
  * @returns {boolean}
  */
 function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function finishIntro() {
-  document.documentElement.dataset.intro = "done";
+function introRoot() {
+  const intro = document.getElementById("intro");
+  return intro instanceof HTMLElement ? intro : undefined;
+}
+
+function introDone() {
+  return !introRoot()?.hasAttribute("data-status");
 }
 
 /**
- * Reveal the timer with no animation (skip path): unlock immediately since
- * there's no curtain to wait for. Remove the intro shell when present.
+ * Reveal the timer with no curtain (skip path).
  * @param {(() => void) | undefined} onReveal
  * @param {HTMLElement} [intro]
  */
 function revealApp(onReveal, intro) {
   onReveal?.();
-  // `inert` already removes the subtree from the accessibility tree
-  // (Baseline since April 2023), so there's no need to also toggle aria-hidden.
-  // It lives on <html>, not #app: #intro covers the full viewport with no
-  // interactive content of its own, so nothing on the page should be
-  // reachable while it's up — not just the app.
+  dismissIntro(intro);
+}
+
+/**
+ * @param {HTMLElement} [intro]
+ */
+function dismissIntro(intro) {
   document.documentElement.removeAttribute("inert");
-  intro?.remove();
-  finishIntro();
+  if (!intro) return;
+  delete intro.dataset.status;
+  intro.remove();
 }
 
+/** Past the 2.4s delay + 0.4s wipe, so a missed animation event still unlocks the page. */
+const INTRO_FALLBACK_MS = 4000;
+
 /**
- * Resolve once a CSS animation with the given name finishes on target
- * (or one of its descendants, since `animationend` bubbles).
- * @param {HTMLElement} target
- * @param {string} animationName
+ * Child animations bubble to `#intro`. Wait until this element's own animation fires.
+ * @param {HTMLElement} intro
+ * @param {"animationstart" | "animationend"} eventName
  * @returns {Promise<void>}
  */
-function waitForAnimation(target, animationName) {
+function whenIntroAnimation(intro, eventName) {
   return new Promise((resolve) => {
-    target.addEventListener("animationend", function handler(event) {
-      if (event.animationName !== animationName) return;
-      target.removeEventListener("animationend", handler);
+    let settled = false;
+    /** @param {AnimationEvent} event */
+    const handler = (event) => {
+      if (event.target !== intro) return;
+      finish();
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      intro.removeEventListener(eventName, handler);
       resolve();
-    });
+    };
+    const timer = window.setTimeout(finish, INTRO_FALLBACK_MS);
+    intro.addEventListener(eventName, handler);
   });
 }
 
 /**
- * Resolve once a CSS transition of the given property finishes on target.
- * @param {HTMLElement} target
- * @param {string} property
- * @returns {Promise<void>}
- */
-function waitForTransition(target, property) {
-  return new Promise((resolve) => {
-    target.addEventListener("transitionend", function handler(event) {
-      if (event.propertyName !== property) return;
-      target.removeEventListener("transitionend", handler);
-      resolve();
-    });
-  });
-}
-
-/**
- * Resolve once `event` fires on a Lottie AnimationItem. Lottie's emitter
- * isn't a real EventTarget, so `{ once: true }` isn't honored — this removes
- * its own listener instead.
  * @param {{ addEventListener: Function, removeEventListener: Function }} target
  * @param {string} event
  * @returns {Promise<void>}
@@ -91,104 +81,147 @@ function once(target, event) {
 }
 
 /**
- * Play a panel's Lottie once. Optional onNearEnd fires once, LOGO_LEAD_MS
- * before complete (scheduled from duration on DOMLoaded). CSS handles the
- * poster→SVG swap once the panel gets `.is-ready` (see the component styles).
- *
- * A panel settles on whichever comes first: a clean "complete", a
- * "data_failed", or the LOTTIE_TIMEOUT_MS safety net. In practice it's
- * always "complete" — the other two exist for a stuck or broken asset and
- * are not expected to fire.
- * @param {HTMLElement} panel
- * @param {typeof import('lottie-web/build/player/lottie_light.js').default} lottie
- * @param {(() => void) | undefined} [onNearEnd]
- * @returns {Promise<{ destroy: () => void }>}
+ * @typedef {{
+ *   isLoaded?: boolean,
+ *   destroy: () => void,
+ *   play: () => void,
+ *   setSubframe: (flag: boolean) => void,
+ *   addEventListener: Function,
+ *   removeEventListener: Function,
+ * }} LottieAnim
  */
-function playAnimation(panel, lottie, onNearEnd) {
-  const src = panel.dataset.src;
-  if (!src) {
-    onNearEnd?.();
-    return Promise.resolve({ destroy: () => {} });
-  }
 
-  const anim = lottie.loadAnimation({
-    container: panel,
-    renderer: "svg",
-    loop: false,
-    autoplay: false,
-    path: src,
-    rendererSettings: {
-      progressiveLoad: true,
-      hideOnTransparent: true,
-    },
+/**
+ * DOMLoaded is scheduled with setTimeout(0) after isLoaded flips, so a
+ * listener added in the same turn still hears it. If it already flipped
+ * and the event was missed, isLoaded is enough.
+ * @param {LottieAnim} anim
+ * @returns {Promise<void>}
+ */
+function whenDomLoaded(anim) {
+  if (anim.isLoaded) return Promise.resolve();
+  return Promise.race([once(anim, "DOMLoaded"), once(anim, "data_failed"), once(anim, "error")]);
+}
+
+/**
+ * @param {AbortSignal} signal
+ * @returns {Promise<void>}
+ */
+function whenAborted(signal) {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
   });
+}
 
-  anim.addEventListener("DOMLoaded", () => {
-    panel.classList.add("is-ready");
-    anim.setSubframe(false);
-    anim.play();
-    if (onNearEnd) {
-      const durationMs = (anim.totalFrames / anim.frameRate) * 1000;
-      window.setTimeout(onNearEnd, Math.max(0, durationMs - LOGO_LEAD_MS));
+/**
+ * @returns {Promise<void>}
+ */
+async function loadLottie() {
+  if (lottie) return;
+  try {
+    lottie = (await import("lottie-web/build/player/lottie_light.js")).default;
+  } catch {
+    // The sequence still runs on the posters.
+  }
+}
+
+/**
+ * @param {LottieAnim[]} anims
+ */
+function destroyAnims(anims) {
+  for (const anim of anims) {
+    try {
+      anim.destroy();
+    } catch {
+      // Already torn down.
+    }
+  }
+}
+
+/**
+ * Build whatever clips arrive before `signal` aborts. A clip that made it
+ * in is played in full; the budget only limits the fetch, not playback.
+ * @param {HTMLElement[]} panels
+ * @param {AbortSignal} signal
+ * @returns {Promise<LottieAnim[]>}
+ */
+async function loadClips(panels, signal) {
+  if (!panels.length) return [];
+
+  /** @type {Promise<{ panel: HTMLElement, data: unknown } | null>[]} */
+  const clipPromises = panels.map(async (panel) => {
+    try {
+      const res = await fetch(panel.dataset.src ?? "", { signal });
+      if (!res.ok) return null;
+      return { panel, data: await res.json() };
+    } catch {
+      return null;
     }
   });
 
-  return Promise.race([
-    once(anim, "complete"),
-    once(anim, "data_failed"),
-    hold(LOTTIE_TIMEOUT_MS),
-  ]).then(() => ({
-    destroy: () => {
+  await Promise.race([Promise.all([loadLottie(), ...clipPromises]), whenAborted(signal)]);
+
+  const loaded = (await Promise.all(clipPromises)).filter((clip) => clip !== null);
+  if (!loaded.length || !lottie || introDone()) return [];
+
+  const player = lottie;
+  const built = loaded.map(({ panel, data }) => ({
+    panel,
+    anim: player.loadAnimation({
+      container: panel,
+      renderer: "svg",
+      loop: false,
+      autoplay: false,
+      animationData: data,
+      rendererSettings: {
+        progressiveLoad: true,
+        hideOnTransparent: true,
+      },
+    }),
+  }));
+
+  await Promise.race([
+    Promise.all(built.map(({ anim }) => whenDomLoaded(anim))),
+    new Promise((resolve) => setTimeout(resolve, 1000)),
+  ]);
+  if (introDone()) {
+    destroyAnims(built.map(({ anim }) => anim));
+    return [];
+  }
+
+  /** @type {LottieAnim[]} */
+  const playable = [];
+  for (const { panel, anim } of built) {
+    if (anim.isLoaded) {
+      panel.dataset.ready = "";
+      playable.push(anim);
+    } else {
       try {
         anim.destroy();
       } catch {
         // Already torn down.
       }
-    },
-  }));
+    }
+  }
+  return playable;
 }
 
 /**
- * Trigger the logo-slam / figure-jump keyframes (defined in the component's
- * CSS). The slam's duration includes the rest at the end state, so this
- * resolves when that animation ends.
- * @param {HTMLElement} intro
+ * @param {LottieAnim[]} anims
  */
-async function showLogotype(intro) {
-  const done = waitForAnimation(intro, "logo-slam");
-  intro.classList.add("is-slamming");
-  await done;
+function playClips(anims) {
+  for (const anim of anims) {
+    anim.setSubframe(false);
+    anim.play();
+  }
 }
 
 /**
- * Clip the white overlay away bottom→top (a plain CSS transition); kick off
- * the digit dance as it clears.
- * @param {HTMLElement} intro
- * @param {Array<{ destroy: () => void }>} [players]
- * @param {(() => void) | undefined} [onReveal]
- */
-async function revealTimer(intro, players = [], onReveal) {
-  const done = waitForTransition(intro, "clip-path");
-  intro.classList.add("is-exiting");
-  onReveal?.();
-  // finishIntro() stays synchronous here (not after `await done`): its
-  // dataset flag is the only guard against playIntro() re-entering while
-  // the wipe is still running.
-  finishIntro();
-  await done;
-
-  // <html> stays inert for the full wipe: nothing behind the curtain should
-  // be focusable or clickable until it's actually visible.
-  document.documentElement.removeAttribute("inert");
-  for (const player of players) player.destroy();
-  intro.remove();
-}
-
-/**
- * Runs the brand intro when online, then clips away bottom→top to reveal the timer.
- * Offline and reduced-motion skip straight to the timer (intro assets are not SW-cached).
- * Call after the timer has been enhanced; pass onReveal to start the digit dance
- * as the overlay begins to clear.
+ * The brand intro paints posters immediately. Clips have 2000ms to
+ * arrive; then `data-status="playing"` starts the CSS sequence (slam, jump, wipe) and
+ * any built clip plays from that same moment. A 2s clip finishes before the
+ * wipe at 2.4s. Offline and reduced-motion skip straight to the timer.
  * @param {HTMLElement} [app]
  * @param {{ onReveal?: () => void }} [options]
  * @returns {Promise<void>}
@@ -200,53 +233,37 @@ export async function playIntro(
   const intro = document.querySelector("#intro");
   if (!(app instanceof HTMLElement)) return;
 
-  // Missing shell, offline, reduced motion, or already done → timer only.
   if (
     !(intro instanceof HTMLElement) ||
     !navigator.onLine ||
     prefersReducedMotion() ||
-    document.documentElement.dataset.intro === "done"
+    introDone()
   ) {
     revealApp(onReveal, intro instanceof HTMLElement ? intro : undefined);
     return;
   }
 
-  document.documentElement.setAttribute("inert", "");
+  /** @type {HTMLElement[]} */
+  const panels = [...intro.querySelectorAll(".intro-panel")].filter(
+    (panel) => panel instanceof HTMLElement,
+  );
+  const anims = await loadClips(panels, AbortSignal.timeout(2000));
 
-  const panels = [...intro.querySelectorAll(".intro-panel")];
-
-  if (!panels.length) {
+  if (introDone()) {
+    destroyAnims(anims);
     revealApp(onReveal, intro);
     return;
   }
 
-  /** @type {typeof import('lottie-web/build/player/lottie_light.js').default} */
-  let lottie;
-  try {
-    lottie = (await import("lottie-web/build/player/lottie_light.js")).default;
-  } catch {
-    // Lottie didn't load: show the still logotype, then clip the overlay away.
-    const logo = intro.querySelector(".intro-logotype");
-    if (logo instanceof HTMLElement) logo.style.opacity = "1";
-    await revealTimer(intro, [], onReveal);
-    return;
-  }
+  const wipeStarted = whenIntroAnimation(intro, "animationstart");
+  const wipeEnded = whenIntroAnimation(intro, "animationend");
+  intro.dataset.status = "playing";
+  playClips(anims);
 
-  /** @type {Promise<void> | null} */
-  let logoPromise = null;
-  const ensureLogo = () => {
-    logoPromise ??= showLogotype(intro);
-  };
+  await wipeStarted;
+  onReveal?.();
 
-  // All panels play in parallel; logo starts LOGO_LEAD_MS before the last finishes.
-  const lastPanel = panels.at(-1);
-  const players = await Promise.all(
-    panels.map((panel) =>
-      playAnimation(panel, lottie, panel === lastPanel ? ensureLogo : undefined),
-    ),
-  );
-
-  ensureLogo();
-  await logoPromise;
-  await revealTimer(intro, players, onReveal);
+  await wipeEnded;
+  destroyAnims(anims);
+  dismissIntro(intro);
 }

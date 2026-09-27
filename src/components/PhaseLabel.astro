@@ -15,11 +15,10 @@ const { label = LABEL.idle } = Astro.props;
 </phase-label>
 
 <script>
-  import { animate, steps } from "motion";
   import { LABEL } from "../scripts/labels.js";
   import { toPhaseType } from "../scripts/model.js";
 
-  const DURATION = 0.2;
+  const SLIDE_MS = 200;
   const LINE = "1lh";
   const SLIDE_DOWN = new Set([LABEL.prepare, LABEL.paused]);
   /** Shared display copy — LABEL.start and LABEL.idle are both "Start". */
@@ -149,7 +148,7 @@ const { label = LABEL.idle } = Astro.props;
      * @param {"bottom" | "top"} [from]
      */
     #slide(next: string, nextTone: "work" | "rest" | null, from: "bottom" | "top" = "bottom") {
-      if (!this.#label) {
+      if (!this.#label || matchMedia("(prefers-reduced-motion: reduce)").matches) {
         this.#snap(next, nextTone);
         return;
       }
@@ -162,10 +161,16 @@ const { label = LABEL.idle } = Astro.props;
       if (this.#tone) outgoing.dataset.tone = this.#tone;
       const incoming = this.#makeLabel(next, nextTone);
       const fromTop = from === "top";
+      const start = fromTop ? `translateY(-${LINE})` : "translateY(0)";
+      const end = fromTop ? "translateY(0)" : `translateY(-${LINE})`;
 
+      track.style.transition = "none";
       track.replaceChildren(...(fromTop ? [incoming, outgoing] : [outgoing, incoming]));
-      if (fromTop) track.style.transform = `translateY(-${LINE})`;
-      else track.removeAttribute("style");
+      track.style.transform = start;
+      void track.offsetWidth;
+      track.style.removeProperty("transition");
+      track.style.transform = end;
+
       this.setAttribute("aria-label", next);
       delete this.dataset.tone;
 
@@ -173,27 +178,44 @@ const { label = LABEL.idle } = Astro.props;
       this.#tone = nextTone;
       this.#label = incoming;
 
-      const controls = animate(
-        track,
-        { y: fromTop ? [`-${LINE}`, 0] : [0, `-${LINE}`] },
-        { duration: DURATION, ease: steps(3) },
-      );
-      this.#active = controls;
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        track.removeEventListener("transitionend", onEnd);
+        if (this.#active !== controls) return;
+        this.#active = null;
+        outgoing.remove();
+        track.removeAttribute("style");
+        this.#applyRootTone(nextTone);
+      };
 
-      controls.then(
-        () => {
-          if (this.#active !== controls) return;
-          this.#active = null;
-          outgoing.remove();
-          track.removeAttribute("style");
-          this.#applyRootTone(nextTone);
+      /** @type {{ stop: () => void }} */
+      const controls = {
+        stop: () => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          track.removeEventListener("transitionend", onEnd);
+          queueMicrotask(() => {
+            if (this.#active !== controls) return;
+            this.#active = null;
+            this.#snap(next, nextTone);
+          });
         },
-        () => {
-          if (this.#active !== controls) return;
-          this.#active = null;
-          this.#snap(next, nextTone);
-        },
-      );
+      };
+
+      /** @param {Event} event */
+      const onEnd = (event) => {
+        if (event.target !== track || !(event instanceof TransitionEvent) || event.propertyName !== "transform")
+          return;
+        settle();
+      };
+
+      track.addEventListener("transitionend", onEnd);
+      const timer = window.setTimeout(settle, SLIDE_MS + 200);
+      this.#active = controls;
     }
   }
 
@@ -215,7 +237,13 @@ const { label = LABEL.idle } = Astro.props;
     display: flex;
     flex-direction: column;
     align-items: end;
-    will-change: transform;
+    transition: transform 200ms steps(3, jump-end);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .phase :global(.phase-track) {
+      transition: none;
+    }
   }
 
   .phase :global(.phase-label) {

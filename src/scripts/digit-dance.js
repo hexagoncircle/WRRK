@@ -1,5 +1,3 @@
-import { animate } from "motion";
-
 const ITERATIONS = 2;
 const DEFAULT_DURATION = 0.1;
 const FLASH_MS = 100;
@@ -30,8 +28,14 @@ const SETTLE_ORDER = {
   9: ["top", "top-right", "top-left", "middle", "bottom-right"],
 };
 
-/** @type {{ stop: () => void, pause: () => void, play: () => void, time: number } | null} */
+/** @type {{ stop: () => void } | null} */
 let activeControls = null;
+
+/**
+ * `live` cues are side effects (blips). A seek or a catch-up gap skips them
+ * and only replays the picture.
+ * @typedef {{ at: number, run: () => void, live?: boolean }} Cue
+ */
 
 /** @type {Element[] | null} */
 let activeDigits = null;
@@ -64,28 +68,151 @@ function setFill(el, fill) {
   el.style.fill = fill;
 }
 
-/** Scrub-safe one-shot for Motion sequence callbacks. */
-function toggle(onForwards, onBackwards) {
-  let done = false;
-  return (p) => {
-    if (p >= 1 && !done) {
-      done = true;
-      onForwards();
-    } else if (p < 1 && done) {
-      done = false;
-      onBackwards();
-    }
-  };
+/**
+ * @param {HTMLElement | Element} el
+ * @param {string} fill
+ * @param {number} at
+ * @returns {Cue}
+ */
+function fillAt(el, fill, at) {
+  return { at, run: () => setFill(el, fill) };
 }
 
-function fillAt(el, fill, undoFill, at) {
-  return [
-    toggle(
-      () => setFill(el, fill),
-      () => setFill(el, undoFill),
-    ),
-    { duration: 0, at },
-  ];
+/** A hidden tab freezes rAF, then one frame covers the gap. Skip blips past this. */
+const CATCH_UP_S = 0.5;
+
+/**
+ * Fire `events` at absolute times and resolve when `durationSeconds` elapses.
+ * pause/play/time match the countdown clock: pause cancels the frame loop,
+ * and setting time rebuilds the picture without replaying blips.
+ * stop() rejects so cancelDigitDance clears fills the same way a finished dance does.
+ * @param {Cue[]} events
+ * @param {number} durationSeconds
+ * @param {(() => void) | undefined} [restore] rewind point for `time`
+ */
+function playTimeline(events, durationSeconds, restore) {
+  const pending = [...events].sort((a, b) => a.at - b.at);
+  let index = 0;
+  let raf = 0;
+  let stopped = false;
+  let paused = false;
+  let finished = false;
+  let elapsed = 0;
+  let origin = performance.now();
+
+  /** @type {(value?: void) => void} */
+  let resolve;
+  /** @type {(reason?: unknown) => void} */
+  let reject;
+  const done = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  /**
+   * @param {number} t
+   * @param {boolean} live
+   */
+  const applyUntil = (t, live) => {
+    while (index < pending.length && pending[index].at <= t) {
+      const event = pending[index];
+      index += 1;
+      if (live || !event.live) event.run();
+      if (stopped) return;
+    }
+  };
+
+  const finish = () => {
+    if (finished || stopped) return;
+    finished = true;
+    cancelAnimationFrame(raf);
+    resolve();
+  };
+
+  const arm = () => {
+    origin = performance.now() - elapsed * 1000;
+    raf = requestAnimationFrame(frame);
+  };
+
+  /** @param {number} now */
+  const frame = (now) => {
+    if (stopped || paused || finished) return;
+    const next = (now - origin) / 1000;
+    if (next - elapsed > CATCH_UP_S) {
+      elapsed = Math.min(next, durationSeconds);
+      applyUntil(elapsed, false);
+      if (stopped) return;
+      origin = now - elapsed * 1000;
+      if (elapsed >= durationSeconds) {
+        finish();
+        return;
+      }
+      raf = requestAnimationFrame(frame);
+      return;
+    }
+    elapsed = next;
+    applyUntil(elapsed, true);
+    if (stopped) return;
+    if (elapsed >= durationSeconds) {
+      finish();
+      return;
+    }
+    raf = requestAnimationFrame(frame);
+  };
+
+  /** @param {number} seconds */
+  const seek = (seconds) => {
+    if (stopped || finished) return;
+    const t = Math.min(Math.max(seconds, 0), durationSeconds);
+    cancelAnimationFrame(raf);
+    restore?.();
+    index = 0;
+    elapsed = t;
+    applyUntil(t, false);
+    if (stopped || finished) return;
+    if (t >= durationSeconds) {
+      finish();
+      return;
+    }
+    if (!paused) arm();
+  };
+
+  arm();
+
+  return {
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      cancelAnimationFrame(raf);
+      reject(new DOMException("The digit dance was canceled.", "AbortError"));
+    },
+    pause() {
+      if (stopped || finished || paused) return;
+      paused = true;
+      cancelAnimationFrame(raf);
+      elapsed = Math.min(Math.max(0, (performance.now() - origin) / 1000), durationSeconds);
+    },
+    play() {
+      if (stopped || finished || !paused) return;
+      paused = false;
+      arm();
+    },
+    /** @param {number} seconds */
+    set time(seconds) {
+      seek(seconds);
+    },
+    get time() {
+      if (paused || finished || stopped) return elapsed;
+      return Math.min(Math.max(0, (performance.now() - origin) / 1000), durationSeconds);
+    },
+    /**
+     * @param {((value: void) => void) | null | undefined} onFulfilled
+     * @param {((reason: unknown) => void) | null | undefined} onRejected
+     */
+    then(onFulfilled, onRejected) {
+      return done.then(onFulfilled, onRejected);
+    },
+  };
 }
 
 function settleOrder(digitValue) {
@@ -101,22 +228,15 @@ function danceTimings(budgetSeconds = null) {
 }
 
 function buildFigure8Sequence(digit, { fg, subtle, duration, step, steps, at }) {
-  const sequence = [
-    [
-      toggle(
-        () => setFills([digit], subtle),
-        () => setFills([digit], null),
-      ),
-      { duration: 0, at },
-    ],
-  ];
+  /** @type {Cue[]} */
+  const sequence = [{ at, run: () => setFills([digit], subtle) }];
 
   for (let i = 0; i < steps; i++) {
     const el = digit.querySelector(`.${FIGURE8[i % FIGURE8.length]}`);
     if (!el) continue;
     const t = at + i * step;
-    sequence.push(fillAt(el, fg, subtle, t));
-    sequence.push(fillAt(el, subtle, fg, t + duration));
+    sequence.push(fillAt(el, fg, t));
+    sequence.push(fillAt(el, subtle, t + duration));
   }
 
   return { sequence, end: at + (steps - 1) * step + duration };
@@ -124,12 +244,13 @@ function buildFigure8Sequence(digit, { fg, subtle, duration, step, steps, at }) 
 
 function buildSettleSequence(digit, { fg, subtle, step, at, digitValue }) {
   const settle = settleOrder(digitValue);
+  /** @type {Cue[]} */
   const sequence = [];
 
   for (let i = 0; i < settle.length; i++) {
     const el = digit.querySelector(`.${settle[i]}`);
     if (!el) continue;
-    sequence.push(fillAt(el, fg, subtle, at + i * step));
+    sequence.push(fillAt(el, fg, at + i * step));
   }
 
   return { sequence, end: at + settle.length * step };
@@ -172,7 +293,6 @@ function trackControls(controls, digits) {
 
 /**
  * Brief subtle flash, then snap to CSS glyph fills (reduced motion).
- * Uses a Motion timeline so cancelDigitDance can stop() like the chase path.
  * @param {Element[]} digits
  */
 function playDigitFlash(digits) {
@@ -182,23 +302,15 @@ function playDigitFlash(digits) {
   const flashSeconds = FLASH_MS / 1000;
   setFills(digits, subtle);
 
-  const sequence = [
-    [
-      toggle(
-        () => setFills(digits, null),
-        () => setFills(digits, subtle),
-      ),
-      { duration: 0, at: flashSeconds },
-    ],
-    [() => {}, { duration: flashSeconds, at: 0, ease: "linear" }],
-  ];
-
-  return trackControls(animate(sequence), digits);
+  return trackControls(
+    playTimeline([{ at: flashSeconds, run: () => setFills(digits, null) }], flashSeconds),
+    digits,
+  );
 }
 
 /**
  * Reduced-motion countdown beats: snap the ones glyph, brief fill flash, no chase.
- * @param {unknown[]} sequence
+ * @param {Cue[]} sequence
  * @param {{ ones: Element, list: Element[], subtle: string, count: number, beatSeconds: number, prepSeconds: number, total: number, onBeat?: (n: number) => void }} opts
  */
 function appendCountdownFlash(sequence, { ones, list, subtle, count, beatSeconds, prepSeconds, total, onBeat }) {
@@ -208,42 +320,30 @@ function appendCountdownFlash(sequence, { ones, list, subtle, count, beatSeconds
     const t = prepSeconds + beat * beatSeconds;
     const n = count - beat;
 
-    sequence.push([
-      toggle(
-        () => {
-          ones.dataset.digit = String(n);
-          setFills(list, subtle);
-          onBeat?.(n);
-        },
-        () => {
-          ones.dataset.digit = beat === 0 ? "" : String(n + 1);
-          setFills(list, subtle);
-        },
-      ),
-      { duration: 0, at: t },
-    ]);
+    sequence.push({
+      at: t,
+      run: () => {
+        ones.dataset.digit = String(n);
+        setFills(list, subtle);
+      },
+    });
+    sequence.push({ at: t, live: true, run: () => onBeat?.(n) });
 
-    sequence.push([
-      toggle(
-        () => setFills([ones], null),
-        () => setFills([ones], subtle),
-      ),
-      { duration: 0, at: t + flashAt },
-    ]);
+    sequence.push({
+      at: t + flashAt,
+      run: () => setFills([ones], null),
+    });
   }
 
-  sequence.push([
-    toggle(
-      () => setFills(list, null),
-      () => setFills(list, subtle),
-    ),
-    { duration: 0, at: total },
-  ]);
+  sequence.push({
+    at: total,
+    run: () => setFills(list, null),
+  });
 }
 
 /**
  * Full-motion countdown: prep chase, settle ones on first beat, chase the rest.
- * @param {unknown[]} sequence
+ * @param {Cue[]} sequence
  * @param {{ ones: Element, list: Element[], fg: string, subtle: string, count: number, beatSeconds: number, prepSeconds: number, onBeat?: (n: number) => void }} opts
  */
 function appendCountdownChase(sequence, { ones, list, fg, subtle, count, beatSeconds, prepSeconds, onBeat }) {
@@ -275,20 +375,14 @@ function appendCountdownChase(sequence, { ones, list, fg, subtle, count, beatSec
     const n = count - beat;
 
     if (beat === 0) {
-      sequence.push([
-        toggle(
-          () => {
-            ones.dataset.digit = firstValue;
-            setFills([ones], subtle);
-            onBeat?.(n);
-          },
-          () => {
-            ones.dataset.digit = "";
-            setFills([ones], subtle);
-          },
-        ),
-        { duration: 0, at: t },
-      ]);
+      sequence.push({
+        at: t,
+        run: () => {
+          ones.dataset.digit = firstValue;
+          setFills([ones], subtle);
+        },
+      });
+      sequence.push({ at: t, live: true, run: () => onBeat?.(n) });
 
       const settled = buildSettleSequence(ones, {
         fg,
@@ -298,28 +392,19 @@ function appendCountdownChase(sequence, { ones, list, fg, subtle, count, beatSec
         digitValue: firstValue,
       });
       sequence.push(...settled.sequence);
-      sequence.push([
-        toggle(
-          () => setFills([ones], null),
-          () => setFills([ones], subtle),
-        ),
-        { duration: 0, at: settled.end },
-      ]);
+      sequence.push({
+        at: settled.end,
+        run: () => setFills([ones], null),
+      });
     } else {
-      sequence.push([
-        toggle(
-          () => {
-            ones.dataset.digit = String(n);
-            setFills([ones], null);
-            onBeat?.(n);
-          },
-          () => {
-            ones.dataset.digit = String(n + 1);
-            setFills([ones], null);
-          },
-        ),
-        { duration: 0, at: t },
-      ]);
+      sequence.push({
+        at: t,
+        run: () => {
+          ones.dataset.digit = String(n);
+          setFills([ones], null);
+        },
+      });
+      sequence.push({ at: t, live: true, run: () => onBeat?.(n) });
     }
 
     for (const d of dancers) chaseAt(d, t);
@@ -347,6 +432,7 @@ export function playDigitDance(digits) {
   const { fg, subtle } = themeColors(list[0]);
   setFills(list, subtle);
 
+  /** @type {Cue[]} */
   const sequence = [];
   let maxEnd = 0;
 
@@ -356,17 +442,12 @@ export function playDigitDance(digits) {
     if (end > maxEnd) maxEnd = end;
   }
 
-  sequence.push([
-    toggle(
-      () => setFills(list, null),
-      () => setFills(list, subtle),
-    ),
-    { duration: 0, at: maxEnd },
-  ]);
+  sequence.push({
+    at: maxEnd,
+    run: () => setFills(list, null),
+  });
 
-  sequence.push([() => {}, { duration: maxEnd, at: 0, ease: "linear" }]);
-
-  return trackControls(animate(sequence), list);
+  return trackControls(playTimeline(sequence, maxEnd), list);
 }
 
 /**
@@ -387,10 +468,14 @@ export function playCountdown(
   const ones = list[list.length - 1];
   const { fg, subtle } = themeColors(list[0]);
   const total = prepSeconds + count * beatSeconds;
+  /** @type {Cue[]} */
   const sequence = [];
 
-  for (const d of list) d.dataset.digit = "";
-  setFills(list, subtle);
+  const restore = () => {
+    for (const d of list) d.dataset.digit = "";
+    setFills(list, subtle);
+  };
+  restore();
 
   if (prefersReducedMotion()) {
     appendCountdownFlash(sequence, {
@@ -416,6 +501,5 @@ export function playCountdown(
     });
   }
 
-  sequence.push([() => {}, { duration: total, at: 0, ease: "linear" }]);
-  return trackControls(animate(sequence), list);
+  return trackControls(playTimeline(sequence, total, restore), list);
 }
