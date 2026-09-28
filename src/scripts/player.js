@@ -81,7 +81,6 @@ function requireEl(root, selector) {
 export function enhancePlayer(root, options) {
   const attrsRoot = options.attrsRoot ?? root;
   const $time = /** @type {TimeDisplayEl} */ (requireEl(root, "time-display"));
-  const $digits = $time.digits;
   const $roundLabel = requireEl(root, ".round-label");
   const $roundCurrent = requireEl(root, ".round-current");
   const phaseLabel = /** @type {PhaseLabelEl} */ (requireEl(root, "phase-label"));
@@ -220,7 +219,7 @@ export function enhancePlayer(root, options) {
 
   const stopCountdownTimeline = () => {
     countdownTimeline = null;
-    cancelDigitDance();
+    cancelDigitDance($time);
   };
 
   const secondsUntilPhaseEnd = () => {
@@ -242,7 +241,7 @@ export function enhancePlayer(root, options) {
   const startCountdownTimeline = () => {
     stopCountdownTimeline();
     $time.setAttribute("aria-label", LABEL.prepare);
-    countdownTimeline = playCountdown($digits, {
+    countdownTimeline = playCountdown($time, {
       count: COUNTDOWN_SECONDS,
       prepSeconds: PREPARE_SECONDS,
       beatSeconds: 1,
@@ -281,7 +280,7 @@ export function enhancePlayer(root, options) {
     syncSessionState();
   };
 
-  const lightUpDigits = () => playDigitDance($digits);
+  const lightUpDigits = () => playDigitDance($time);
 
   /**
    * @param {TimerConfig} [config]

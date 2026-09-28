@@ -1,20 +1,9 @@
-const ITERATIONS = 2;
-const DEFAULT_DURATION = 0.1;
-const FLASH_MS = 100;
+const FRAME_S = 0.032;
 
-/** One figure-8 lap (middle visited twice). */
-const FIGURE8 = [
-  "top",
-  "top-right",
-  "middle",
-  "bottom-left",
-  "bottom",
-  "bottom-right",
-  "middle",
-  "top-left",
-];
-
-/** Settle order per glyph; segment sets must match Digit.astro `[data-digit]` rules. */
+/**
+ * Lit segments in the order they settle. The index is `--settle` on that path.
+ * @type {Record<string, string[]>}
+ */
 const SETTLE_ORDER = {
   0: ["top", "top-right", "top-left", "bottom-right", "bottom-left", "bottom"],
   1: ["top-right", "bottom-right"],
@@ -28,478 +17,304 @@ const SETTLE_ORDER = {
   9: ["top", "top-right", "top-left", "middle", "bottom-right"],
 };
 
-/** @type {{ stop: () => void } | null} */
-let activeControls = null;
+let seq = 0;
 
 /**
- * `live` cues are side effects (blips). A seek or a catch-up gap skips them
- * and only replays the picture.
- * @typedef {{ at: number, run: () => void, live?: boolean }} Cue
+ * @param {Element} digit
  */
-
-/** @type {Element[] | null} */
-let activeDigits = null;
+function clearSettle(digit) {
+  for (const path of digit.querySelectorAll("path")) {
+    path.style.removeProperty("--settle");
+  }
+}
 
 /**
- * @returns {boolean}
+ * Freeze the stagger once. Later glyph snaps change `data-digit` only,
+ * so this order does not restart the settle animation.
+ * @param {Element} digit
+ * @param {string} glyph
  */
+function freezeSettle(digit, glyph) {
+  const order = SETTLE_ORDER[glyph];
+  if (!order) return;
+  for (let index = 0; index < order.length; index++) {
+    const path = digit.querySelector(`.${order[index]}`);
+    if (!(path instanceof Element)) continue;
+    path.style.setProperty("--settle", String(index));
+  }
+}
+
+/**
+ * @param {HTMLElement} root
+ */
+function flush(root) {
+  void root.offsetWidth;
+}
+
 function prefersReducedMotion() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function themeColors(el) {
-  const style = getComputedStyle(el);
-  return {
-    fg: style.getPropertyValue("--color-fg").trim(),
-    subtle: style.getPropertyValue("--color-fg-subtle").trim(),
-  };
-}
-
-function setFills(digits, fill) {
-  for (const digit of digits) {
-    for (const path of digit.querySelectorAll("path")) {
-      if (fill == null) path.style.removeProperty("fill");
-      else path.style.fill = fill;
-    }
+/**
+ * @param {HTMLElement} root
+ */
+function clearDance(root) {
+  delete root.dataset.dance;
+  delete root.dataset.countdown;
+  root.style.removeProperty("--beat");
+  root.style.removeProperty("--prep-beats");
+  root.style.removeProperty("--count");
+  for (const digit of root.querySelectorAll(".digit")) {
+    digit.style.removeProperty("--chase-beats");
+    clearSettle(digit);
   }
 }
 
-function setFill(el, fill) {
-  el.style.fill = fill;
+/**
+ * Drop the previous run, then flush so the next attribute write is a real restart.
+ * @param {HTMLElement} root
+ */
+function begin(root) {
+  clearDance(root);
+  flush(root);
+  return String(++seq);
 }
 
 /**
- * @param {HTMLElement | Element} el
- * @param {string} fill
- * @param {number} at
- * @returns {Cue}
+ * @param {Animation} anim
+ * @returns {anim is CSSAnimation}
  */
-function fillAt(el, fill, at) {
-  return { at, run: () => setFill(el, fill) };
+function isElementAnimation(anim) {
+  if (!(anim instanceof CSSAnimation)) return false;
+  if (anim.animationName === "pulse") return false;
+  const effect = anim.effect;
+  if (!(effect instanceof KeyframeEffect) || effect.pseudoElement) return false;
+  return effect.target instanceof Element;
 }
 
-/** A hidden tab freezes rAF, then one frame covers the gap. Skip blips past this. */
-const CATCH_UP_S = 0.5;
+/**
+ * Digit-path animations plus the beat clock on the root.
+ * Separator transitions and the global pause pulse stay out.
+ * @param {HTMLElement} root
+ * @returns {CSSAnimation[]}
+ */
+function danceAnimations(root) {
+  /** @type {CSSAnimation[]} */
+  const list = [];
+  for (const anim of root.getAnimations({ subtree: true })) {
+    if (!isElementAnimation(anim)) continue;
+    const target = /** @type {KeyframeEffect} */ (anim.effect).target;
+    if (!(target instanceof Element)) continue;
+    const onPath = target.localName === "path" && Boolean(target.closest(".digit"));
+    if (target === root || onPath) list.push(anim);
+  }
+  return list;
+}
 
 /**
- * Fire `events` at absolute times and resolve when `durationSeconds` elapses.
- * pause/play/time match the countdown clock: pause cancels the frame loop,
- * and setting time rebuilds the picture without replaying blips.
- * stop() rejects so cancelDigitDance clears fills the same way a finished dance does.
- * @param {Cue[]} events
- * @param {number} durationSeconds
- * @param {(() => void) | undefined} [restore] rewind point for `time`
+ * @param {CSSAnimation[]} anims
  */
-function playTimeline(events, durationSeconds, restore) {
-  const pending = [...events].sort((a, b) => a.at - b.at);
-  let index = 0;
-  let raf = 0;
-  let stopped = false;
-  let paused = false;
-  let finished = false;
-  let elapsed = 0;
-  let origin = performance.now();
+function elapsedSeconds(anims) {
+  let max = 0;
+  for (const anim of anims) {
+    const time = anim.currentTime;
+    if (typeof time === "number" && time > max) max = time;
+  }
+  return max / 1000;
+}
 
-  /** @type {(value?: void) => void} */
-  let resolve;
-  /** @type {(reason?: unknown) => void} */
-  let reject;
-  const done = new Promise((res, rej) => {
-    resolve = res;
-    reject = rej;
+/**
+ * @param {HTMLElement} root
+ * @param {string} id
+ * @param {CSSAnimation[]} anims
+ * @param {() => void} [onDone]
+ */
+function watchFinished(root, id, anims, onDone) {
+  const finished = Promise.all(anims.map((anim) => anim.finished));
+  finished.catch(() => {});
+  if (anims.length === 0) return finished;
+  Promise.allSettled(anims.map((anim) => anim.finished)).then(() => {
+    onDone?.();
+    if (root.dataset.dance === id) clearDance(root);
   });
+  return finished;
+}
 
-  /**
-   * @param {number} t
-   * @param {boolean} live
-   */
-  const applyUntil = (t, live) => {
-    while (index < pending.length && pending[index].at <= t) {
-      const event = pending[index];
-      index += 1;
-      if (live || !event.live) event.run();
-      if (stopped) return;
-    }
-  };
-
-  const finish = () => {
-    if (finished || stopped) return;
-    finished = true;
-    cancelAnimationFrame(raf);
-    resolve();
-  };
-
-  const arm = () => {
-    origin = performance.now() - elapsed * 1000;
-    raf = requestAnimationFrame(frame);
-  };
-
-  /** @param {number} now */
-  const frame = (now) => {
-    if (stopped || paused || finished) return;
-    const next = (now - origin) / 1000;
-    if (next - elapsed > CATCH_UP_S) {
-      elapsed = Math.min(next, durationSeconds);
-      applyUntil(elapsed, false);
-      if (stopped) return;
-      origin = now - elapsed * 1000;
-      if (elapsed >= durationSeconds) {
-        finish();
-        return;
-      }
-      raf = requestAnimationFrame(frame);
-      return;
-    }
-    elapsed = next;
-    applyUntil(elapsed, true);
-    if (stopped) return;
-    if (elapsed >= durationSeconds) {
-      finish();
-      return;
-    }
-    raf = requestAnimationFrame(frame);
-  };
-
-  /** @param {number} seconds */
-  const seek = (seconds) => {
-    if (stopped || finished) return;
-    const t = Math.min(Math.max(seconds, 0), durationSeconds);
-    cancelAnimationFrame(raf);
-    restore?.();
-    index = 0;
-    elapsed = t;
-    applyUntil(t, false);
-    if (stopped || finished) return;
-    if (t >= durationSeconds) {
-      finish();
-      return;
-    }
-    if (!paused) arm();
-  };
-
-  arm();
-
+/**
+ * @param {CSSAnimation[]} anims
+ * @param {Promise<unknown>} finished
+ * @param {() => void} stop
+ * @param {(seconds: number) => void} [onSeek]
+ */
+function controls(anims, finished, stop, onSeek) {
   return {
-    stop() {
-      if (stopped) return;
-      stopped = true;
-      cancelAnimationFrame(raf);
-      reject(new DOMException("The digit dance was canceled.", "AbortError"));
-    },
+    finished,
     pause() {
-      if (stopped || finished || paused) return;
-      paused = true;
-      cancelAnimationFrame(raf);
-      elapsed = Math.min(Math.max(0, (performance.now() - origin) / 1000), durationSeconds);
+      for (const anim of anims) anim.pause();
     },
     play() {
-      if (stopped || finished || !paused) return;
-      paused = false;
-      arm();
+      for (const anim of anims) anim.play();
     },
-    /** @param {number} seconds */
-    set time(seconds) {
-      seek(seconds);
-    },
+    stop,
     get time() {
-      if (paused || finished || stopped) return elapsed;
-      return Math.min(Math.max(0, (performance.now() - origin) / 1000), durationSeconds);
+      return elapsedSeconds(anims);
     },
-    /**
-     * @param {((value: void) => void) | null | undefined} onFulfilled
-     * @param {((reason: unknown) => void) | null | undefined} onRejected
-     */
-    then(onFulfilled, onRejected) {
-      return done.then(onFulfilled, onRejected);
+    set time(seconds) {
+      const next = Math.max(0, seconds);
+      const ms = next * 1000;
+      for (const anim of anims) anim.currentTime = ms;
+      onSeek?.(next);
     },
   };
 }
 
-function settleOrder(digitValue) {
-  return SETTLE_ORDER[digitValue] ?? SETTLE_ORDER[0];
+/**
+ * @param {HTMLElement} root
+ */
+export function cancelDigitDance(root) {
+  if (!(root instanceof HTMLElement)) return;
+  clearDance(root);
 }
 
-/** Scale chase so one full figure-8 fits in `budgetSeconds` (or use default tempo). */
-function danceTimings(budgetSeconds = null) {
-  const steps = ITERATIONS * FIGURE8.length;
-  const factor = (steps - 1) / 2 + 1;
-  const duration = budgetSeconds != null ? budgetSeconds / factor : DEFAULT_DURATION;
-  return { duration, step: duration * 0.5, steps };
-}
+/**
+ * Figure-8 chase, then settle into each digit's glyph.
+ * @param {HTMLElement} root element that contains the `.digit` SVGs
+ */
+export function playDigitDance(root) {
+  if (!(root instanceof HTMLElement)) return null;
+  const digits = [...root.querySelectorAll(".digit")];
+  if (digits.length === 0) return null;
 
-function buildFigure8Sequence(digit, { fg, subtle, duration, step, steps, at }) {
-  /** @type {Cue[]} */
-  const sequence = [{ at, run: () => setFills([digit], subtle) }];
-
-  for (let i = 0; i < steps; i++) {
-    const el = digit.querySelector(`.${FIGURE8[i % FIGURE8.length]}`);
-    if (!el) continue;
-    const t = at + i * step;
-    sequence.push(fillAt(el, fg, t));
-    sequence.push(fillAt(el, subtle, t + duration));
+  const id = begin(root);
+  for (const digit of digits) {
+    const value = digit.dataset.digit;
+    if (value) freezeSettle(digit, value);
   }
+  root.dataset.dance = id;
+  flush(root);
 
-  return { sequence, end: at + (steps - 1) * step + duration };
-}
-
-function buildSettleSequence(digit, { fg, subtle, step, at, digitValue }) {
-  const settle = settleOrder(digitValue);
-  /** @type {Cue[]} */
-  const sequence = [];
-
-  for (let i = 0; i < settle.length; i++) {
-    const el = digit.querySelector(`.${settle[i]}`);
-    if (!el) continue;
-    sequence.push(fillAt(el, fg, at + i * step));
-  }
-
-  return { sequence, end: at + settle.length * step };
-}
-
-function buildDigitDanceSequence(digit, { fg, subtle }) {
-  const value = digit.dataset.digit ?? "0";
-  const { duration, step, steps } = danceTimings();
-
-  const chased = buildFigure8Sequence(digit, { fg, subtle, duration, step, steps, at: 0 });
-  const settled = buildSettleSequence(digit, {
-    fg,
-    subtle,
-    step,
-    at: chased.end,
-    digitValue: value,
-  });
-
-  return {
-    sequence: [...chased.sequence, ...settled.sequence],
-    end: settled.end,
+  const anims = danceAnimations(root);
+  const stop = () => {
+    if (root.dataset.dance === id) clearDance(root);
   };
-}
-
-function trackControls(controls, digits) {
-  activeControls = controls;
-  activeDigits = digits;
-
-  const clear = () => {
-    if (activeControls === controls) activeControls = null;
-    if (activeDigits === digits) {
-      setFills(digits, null);
-      activeDigits = null;
-    }
-  };
-
-  controls.then(clear, clear);
-  return controls;
+  const finished = watchFinished(root, id, anims);
+  return controls(anims, finished, stop);
 }
 
 /**
- * Brief subtle flash, then snap to CSS glyph fills (reduced motion).
- * @param {Element[]} digits
+ * @param {number} t
+ * @param {number} prep
+ * @param {number} beat
+ * @param {number} count
+ * @param {boolean} reduced
  */
-function playDigitFlash(digits) {
-  cancelDigitDance();
-
-  const { subtle } = themeColors(digits[0]);
-  const flashSeconds = FLASH_MS / 1000;
-  setFills(digits, subtle);
-
-  return trackControls(
-    playTimeline([{ at: flashSeconds, run: () => setFills(digits, null) }], flashSeconds),
-    digits,
-  );
+function digitForTime(t, prep, beat, count, reduced) {
+  if (t < prep) return reduced ? "" : String(count);
+  const beatIndex = Math.min(count - 1, Math.floor((t - prep) / beat));
+  return String(count - beatIndex);
 }
 
 /**
- * Reduced-motion countdown beats: snap the ones glyph, brief fill flash, no chase.
- * @param {Cue[]} sequence
- * @param {{ ones: Element, list: Element[], subtle: string, count: number, beatSeconds: number, prepSeconds: number, total: number, onBeat?: (n: number) => void }} opts
+ * Live beat events land on prep + k*beat. A seek can dispatch the same event
+ * with currentTime already past that boundary.
+ * @param {number} t
+ * @param {number} prep
+ * @param {number} beat
+ * @param {number} count
+ * @returns {number | null}
  */
-function appendCountdownFlash(sequence, { ones, list, subtle, count, beatSeconds, prepSeconds, total, onBeat }) {
-  const flashAt = FLASH_MS / 1000;
-
-  for (let beat = 0; beat < count; beat++) {
-    const t = prepSeconds + beat * beatSeconds;
-    const n = count - beat;
-
-    sequence.push({
-      at: t,
-      run: () => {
-        ones.dataset.digit = String(n);
-        setFills(list, subtle);
-      },
-    });
-    sequence.push({ at: t, live: true, run: () => onBeat?.(n) });
-
-    sequence.push({
-      at: t + flashAt,
-      run: () => setFills([ones], null),
-    });
-  }
-
-  sequence.push({
-    at: total,
-    run: () => setFills(list, null),
-  });
+function boundaryIndex(t, prep, beat, count) {
+  const k = Math.round((t - prep) / beat);
+  const expected = prep + k * beat;
+  if (Math.abs(t - expected) > FRAME_S) return null;
+  if (k < 0 || k >= count) return null;
+  return k;
 }
 
 /**
- * Full-motion countdown: prep chase, settle ones on first beat, chase the rest.
- * @param {Cue[]} sequence
- * @param {{ ones: Element, list: Element[], fg: string, subtle: string, count: number, beatSeconds: number, prepSeconds: number, onBeat?: (n: number) => void }} opts
+ * @param {Element} countdownDigit
  */
-function appendCountdownChase(sequence, { ones, list, fg, subtle, count, beatSeconds, prepSeconds, onBeat }) {
-  const dancers = list.slice(0, -1);
-  const firstValue = String(count);
-  const chase = danceTimings(beatSeconds);
-  const prepBeats = Math.max(0, Math.round(prepSeconds / beatSeconds));
-
-  const chaseAt = (digit, at) => {
-    sequence.push(
-      ...buildFigure8Sequence(digit, {
-        fg,
-        subtle,
-        duration: chase.duration,
-        step: chase.step,
-        steps: chase.steps,
-        at,
-      }).sequence,
+function flashCountdownDigit(countdownDigit) {
+  const subtle = getComputedStyle(countdownDigit).getPropertyValue("--color-fg-subtle").trim();
+  if (!subtle) return;
+  for (const path of countdownDigit.querySelectorAll("path")) {
+    path.animate(
+      [
+        { fill: subtle, offset: 0 },
+        { fill: subtle, offset: 1 },
+      ],
+      { duration: 100, easing: "step-end", fill: "none" },
     );
-  };
-
-  for (let beat = 0; beat < prepBeats; beat++) {
-    const t = beat * beatSeconds;
-    for (const d of list) chaseAt(d, t);
   }
-
-  for (let beat = 0; beat < count; beat++) {
-    const t = prepSeconds + beat * beatSeconds;
-    const n = count - beat;
-
-    if (beat === 0) {
-      sequence.push({
-        at: t,
-        run: () => {
-          ones.dataset.digit = firstValue;
-          setFills([ones], subtle);
-        },
-      });
-      sequence.push({ at: t, live: true, run: () => onBeat?.(n) });
-
-      const settled = buildSettleSequence(ones, {
-        fg,
-        subtle,
-        step: chase.step,
-        at: t,
-        digitValue: firstValue,
-      });
-      sequence.push(...settled.sequence);
-      sequence.push({
-        at: settled.end,
-        run: () => setFills([ones], null),
-      });
-    } else {
-      sequence.push({
-        at: t,
-        run: () => {
-          ones.dataset.digit = String(n);
-          setFills([ones], null);
-        },
-      });
-      sequence.push({ at: t, live: true, run: () => onBeat?.(n) });
-    }
-
-    for (const d of dancers) chaseAt(d, t);
-  }
-}
-
-export function cancelDigitDance() {
-  const digits = activeDigits;
-  const controls = activeControls;
-  activeControls = null;
-  activeDigits = null;
-  controls?.stop();
-  if (digits) setFills(digits, null);
-}
-
-/** Figure-8 chase, then settle into each digit's glyph. */
-export function playDigitDance(digits) {
-  const list = [...digits];
-  if (list.length === 0) return null;
-
-  if (prefersReducedMotion()) return playDigitFlash(list);
-
-  cancelDigitDance();
-
-  const { fg, subtle } = themeColors(list[0]);
-  setFills(list, subtle);
-
-  /** @type {Cue[]} */
-  const sequence = [];
-  let maxEnd = 0;
-
-  for (const d of list) {
-    const { sequence: segments, end } = buildDigitDanceSequence(d, { fg, subtle });
-    sequence.push(...segments);
-    if (end > maxEnd) maxEnd = end;
-  }
-
-  sequence.push({
-    at: maxEnd,
-    run: () => setFills(list, null),
-  });
-
-  return trackControls(playTimeline(sequence, maxEnd), list);
 }
 
 /**
- * Prep chase in lockstep. As countdown begins, the ones digit staggers into
- * `count` (with the first blip / "Get ready"). Later beats snap ones count→1
- * while other digits keep chasing. Reduced motion skips the chase and flashes
- * each beat instead.
+ * Prep chase in lockstep. The last digit settles into `count` on the first beat.
+ * Later beats snap that glyph. Reduced motion skips the chase and flashes each beat.
+ * @param {HTMLElement} root
+ * @param {{ count?: number, beatSeconds?: number, prepSeconds?: number, onBeat?: (n: number) => void }} [options]
  */
 export function playCountdown(
-  digits,
+  root,
   { count = 3, beatSeconds = 1, prepSeconds = 0, onBeat } = {},
 ) {
-  const list = [...digits];
-  if (list.length === 0) return null;
+  if (!(root instanceof HTMLElement)) return null;
+  const digits = [...root.querySelectorAll(".digit")];
+  if (digits.length === 0) return null;
 
-  cancelDigitDance();
+  const countdownDigit = digits[digits.length - 1];
+  if (!(countdownDigit instanceof Element)) return null;
 
-  const ones = list[list.length - 1];
-  const { fg, subtle } = themeColors(list[0]);
-  const total = prepSeconds + count * beatSeconds;
-  /** @type {Cue[]} */
-  const sequence = [];
-
-  const restore = () => {
-    for (const d of list) d.dataset.digit = "";
-    setFills(list, subtle);
-  };
-  restore();
-
-  if (prefersReducedMotion()) {
-    appendCountdownFlash(sequence, {
-      ones,
-      list,
-      subtle,
-      count,
-      beatSeconds,
-      prepSeconds,
-      total,
-      onBeat,
-    });
-  } else {
-    appendCountdownChase(sequence, {
-      ones,
-      list,
-      fg,
-      subtle,
-      count,
-      beatSeconds,
-      prepSeconds,
-      onBeat,
-    });
+  const reduced = prefersReducedMotion();
+  const prepBeats = prepSeconds / beatSeconds;
+  const id = begin(root);
+  for (const digit of digits) {
+    if (digit !== countdownDigit) digit.dataset.digit = "";
+    const chaseBeats = digit === countdownDigit ? prepBeats : prepBeats + count;
+    digit.style.setProperty("--chase-beats", String(chaseBeats));
   }
+  freezeSettle(countdownDigit, String(count));
+  countdownDigit.dataset.digit = digitForTime(0, prepSeconds, beatSeconds, count, reduced);
 
-  return trackControls(playTimeline(sequence, total, restore), list);
+  root.style.setProperty("--beat", `${beatSeconds}s`);
+  root.style.setProperty("--prep-beats", String(prepBeats));
+  root.style.setProperty("--count", String(count));
+  root.dataset.countdown = "";
+  root.dataset.dance = id;
+  flush(root);
+
+  const anims = danceAnimations(root);
+  const clock = anims.find((anim) => anim.effect?.target === root);
+  const clockName = clock?.animationName ?? "";
+
+  /** @param {AnimationEvent} event */
+  const onClock = (event) => {
+    if (event.target !== root || event.animationName !== clockName) return;
+    if (root.dataset.dance !== id || !clock) return;
+    const time = clock.currentTime;
+    if (typeof time !== "number") return;
+    const k = boundaryIndex(time / 1000, prepSeconds, beatSeconds, count);
+    if (k == null) return;
+    const n = count - k;
+    countdownDigit.dataset.digit = String(n);
+    if (reduced) flashCountdownDigit(countdownDigit);
+    onBeat?.(n);
+  };
+
+  root.addEventListener("animationstart", onClock);
+  root.addEventListener("animationiteration", onClock);
+
+  const detach = () => {
+    root.removeEventListener("animationstart", onClock);
+    root.removeEventListener("animationiteration", onClock);
+  };
+  const stop = () => {
+    detach();
+    if (root.dataset.dance === id) clearDance(root);
+  };
+  const finished = watchFinished(root, id, anims, detach);
+
+  return controls(anims, finished, stop, (t) => {
+    countdownDigit.dataset.digit = digitForTime(t, prepSeconds, beatSeconds, count, reduced);
+  });
 }

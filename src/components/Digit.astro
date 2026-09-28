@@ -46,7 +46,7 @@ const { digit } = Astro.props;
   ></path>
 </svg>
 
-<style>
+<style is:global>
   .digit {
     width: 100%;
     height: auto;
@@ -67,5 +67,109 @@ const { digit } = Astro.props;
   [data-digit="8"] :is(.top, .top-right, .bottom-right, .bottom, .bottom-left, .top-left, .middle),
   [data-digit="9"] :is(.top, .top-right, .bottom-right, .top-left, .middle) {
     fill: var(--color-digit, var(--color-fg));
+  }
+
+  .top {
+    --pass: 0;
+  }
+  .top-right {
+    --pass: 1;
+  }
+  .middle {
+    --pass: 2;
+    --return-pass: 6;
+  }
+  .bottom-left {
+    --pass: 3;
+  }
+  .bottom {
+    --pass: 4;
+  }
+  .bottom-right {
+    --pass: 5;
+  }
+  .top-left {
+    --pass: 7;
+  }
+
+  @property --digit-beat {
+    syntax: "<number>";
+    inherits: false;
+    initial-value: 0;
+  }
+
+  @keyframes digit-pulse {
+    from {
+      fill: var(--color-digit, var(--color-fg));
+    }
+  }
+  @keyframes digit-settle {
+    from {
+      fill: var(--color-fg-subtle);
+    }
+  }
+  @keyframes digit-flash {
+    from {
+      fill: var(--color-fg-subtle);
+    }
+  }
+  @keyframes digit-chase {
+    0% {
+      fill: var(--color-digit, var(--color-fg));
+    }
+    25%,
+    100% {
+      fill: var(--color-fg-subtle);
+    }
+  }
+  @keyframes digit-beat {
+    from {
+      --digit-beat: 0;
+    }
+    to {
+      --digit-beat: 1;
+    }
+  }
+
+  [data-dance]:not([data-countdown]) {
+    --step: calc(var(--beat, 850ms) / 17);
+    --settle-at: calc(17 * var(--step));
+  }
+
+  [data-dance]:not([data-countdown]) .digit path {
+    animation:
+      digit-settle 0s calc(var(--settle-at) + var(--settle, 0) * var(--step)) backwards,
+      digit-pulse calc(2 * var(--step)) step-end calc(var(--pass) * var(--step)),
+      digit-pulse calc(2 * var(--step)) step-end calc((var(--pass) + 8) * var(--step)),
+      digit-pulse calc(2 * var(--step)) step-end calc(var(--return-pass, var(--pass)) * var(--step)),
+      digit-pulse calc(2 * var(--step)) step-end
+        calc((var(--return-pass, var(--pass)) + 8) * var(--step));
+  }
+
+  [data-dance][data-countdown] {
+    --step: calc(var(--beat) / 16);
+    --lap: calc(8 * var(--step));
+    --prep: calc(var(--prep-beats) * var(--beat));
+    --settle-at: var(--prep);
+    animation: digit-beat var(--beat) linear var(--prep) var(--count);
+  }
+
+  [data-dance][data-countdown] .digit path {
+    animation:
+      digit-settle 0s calc(var(--settle-at) + var(--settle, 0) * var(--step)) backwards,
+      digit-chase var(--lap) step-end calc(var(--pass) * var(--step))
+        calc(2 * var(--chase-beats) - 0.75),
+      digit-chase var(--lap) step-end calc(var(--return-pass, var(--pass)) * var(--step))
+        calc(2 * var(--chase-beats) - 0.75);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-dance]:not([data-countdown]) .digit path {
+      animation: digit-flash 100ms step-end;
+    }
+
+    [data-dance][data-countdown] .digit path {
+      animation: none;
+    }
   }
 </style>
