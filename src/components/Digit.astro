@@ -108,11 +108,6 @@ const { digit } = Astro.props;
       fill: var(--color-fg-subtle);
     }
   }
-  @keyframes digit-flash {
-    from {
-      fill: var(--color-fg-subtle);
-    }
-  }
   @keyframes digit-chase {
     0% {
       fill: var(--color-digit, var(--color-fg));
@@ -164,10 +159,7 @@ const { digit } = Astro.props;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    [data-dance]:not([data-countdown]) .digit path {
-      animation: digit-flash 100ms step-end;
-    }
-
+    [data-dance]:not([data-countdown]) .digit path,
     [data-dance][data-countdown] .digit path {
       animation: none;
     }

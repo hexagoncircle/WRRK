@@ -144,7 +144,10 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     #setPhaseProgress(
       el: SVGGElement | null,
       value: number,
-      { instant = false, durationSeconds = TRANSITION_SECONDS }: {
+      {
+        instant = false,
+        durationSeconds = TRANSITION_SECONDS,
+      }: {
         instant?: boolean;
         durationSeconds?: number;
       } = {},
@@ -250,12 +253,18 @@ const { workPercent, restPercent } = phasePercents(work, rest);
   }
 
   /* [data-phase] for the blinking dot lives on the app root, not these <g>s. */
+  :global([data-phase="rest"]) .progress-dot {
+    animation: dot-pulse 1s steps(3) infinite alternate;
+  }
+
   :global([data-phase="work"]) .progress-dot {
     animation: dot-work 0.5s steps(1) infinite;
   }
 
-  :global([data-phase="rest"]) .progress-dot {
-    animation: dot-rest 1s steps(3) infinite alternate;
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-phase="work"]) .progress-dot {
+      animation: dot-work-scale 0.5s steps(1) infinite;
+    }
   }
 
   :global([data-status="paused"]) .progress-dot {
@@ -277,7 +286,19 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     }
   }
 
-  @keyframes dot-rest {
+  @keyframes dot-work-scale {
+    0% {
+      scale: 1;
+    }
+    50% {
+      scale: 1.1;
+    }
+    100% {
+      scale: 1;
+    }
+  }
+
+  @keyframes dot-pulse {
     from {
       scale: 1;
     }

@@ -178,10 +178,11 @@ export function cancelDigitDance(root) {
 
 /**
  * Figure-8 chase, then settle into each digit's glyph.
+ * Reduced motion leaves the glyphs as they are.
  * @param {HTMLElement} root element that contains the `.digit` SVGs
  */
 export function playDigitDance(root) {
-  if (!(root instanceof HTMLElement)) return null;
+  if (!(root instanceof HTMLElement) || prefersReducedMotion()) return null;
   const digits = [...root.querySelectorAll(".digit")];
   if (digits.length === 0) return null;
 
@@ -232,25 +233,8 @@ function boundaryIndex(t, prep, beat, count) {
 }
 
 /**
- * @param {Element} countdownDigit
- */
-function flashCountdownDigit(countdownDigit) {
-  const subtle = getComputedStyle(countdownDigit).getPropertyValue("--color-fg-subtle").trim();
-  if (!subtle) return;
-  for (const path of countdownDigit.querySelectorAll("path")) {
-    path.animate(
-      [
-        { fill: subtle, offset: 0 },
-        { fill: subtle, offset: 1 },
-      ],
-      { duration: 100, easing: "step-end", fill: "none" },
-    );
-  }
-}
-
-/**
  * Prep chase in lockstep. The last digit settles into `count` on the first beat.
- * Later beats snap that glyph. Reduced motion skips the chase and flashes each beat.
+ * Later beats snap that glyph. Reduced motion skips the chase.
  * @param {HTMLElement} root
  * @param {{ count?: number, beatSeconds?: number, prepSeconds?: number, onBeat?: (n: number) => void }} [options]
  */
@@ -297,7 +281,6 @@ export function playCountdown(
     if (k == null) return;
     const n = count - k;
     countdownDigit.dataset.digit = String(n);
-    if (reduced) flashCountdownDigit(countdownDigit);
     onBeat?.(n);
   };
 

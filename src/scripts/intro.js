@@ -217,11 +217,36 @@ function playClips(anims) {
   }
 }
 
+/** Settled lockup stays up this long from first paint, then the curtain cuts away. */
+const STATIC_HOLD_MS = 2000;
+
+/**
+ * Characters are already painted. The logotype fades in after 0.5s.
+ * The curtain cuts away at 2s. Never fetches Lottie.
+ * @param {HTMLElement} intro
+ * @param {(() => void) | undefined} onReveal
+ */
+async function playStaticIntro(intro, onReveal) {
+  const shownAt = Number(intro.dataset.shownAt);
+  const elapsed = Number.isFinite(shownAt) ? Date.now() - shownAt : 0;
+  const hold = Math.max(0, STATIC_HOLD_MS - elapsed);
+  if (hold > 0) await new Promise((resolve) => window.setTimeout(resolve, hold));
+  if (introDone()) {
+    revealApp(onReveal, intro);
+    return;
+  }
+
+  onReveal?.();
+  dismissIntro(intro);
+}
+
 /**
  * The brand intro paints posters immediately. Clips have 2000ms to
  * arrive; then `data-status="playing"` starts the CSS sequence (slam, jump, wipe) and
  * any built clip plays from that same moment. A 2s clip finishes before the
- * wipe at 2.4s. Offline and reduced-motion skip straight to the timer.
+ * wipe at 2.4s. Offline skips straight to the timer. Reduced motion shows the
+ * characters, fades the logotype in after 0.5s, then cuts to the timer, and
+ * does not fetch clips.
  * @param {HTMLElement} [app]
  * @param {{ onReveal?: () => void }} [options]
  * @returns {Promise<void>}
@@ -233,13 +258,13 @@ export async function playIntro(
   const intro = document.querySelector("#intro");
   if (!(app instanceof HTMLElement)) return;
 
-  if (
-    !(intro instanceof HTMLElement) ||
-    !navigator.onLine ||
-    prefersReducedMotion() ||
-    introDone()
-  ) {
+  if (!(intro instanceof HTMLElement) || !navigator.onLine || introDone()) {
     revealApp(onReveal, intro instanceof HTMLElement ? intro : undefined);
+    return;
+  }
+
+  if (prefersReducedMotion()) {
+    await playStaticIntro(intro, onReveal);
     return;
   }
 

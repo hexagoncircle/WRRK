@@ -18,17 +18,25 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     const intro = document.getElementById("intro");
     if (!(intro instanceof HTMLElement)) return;
 
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!navigator.onLine || reduce) return;
+    if (!navigator.onLine) return;
 
     const root = document.documentElement;
-    intro.dataset.status = "pending";
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      intro.dataset.status = "static";
+      intro.dataset.shownAt = String(Date.now());
+      setTimeout(() => {
+        if (intro.dataset.status === "static") intro.dataset.logo = "";
+      }, 500);
+    } else {
+      intro.dataset.status = "pending";
+    }
     root.setAttribute("inert", "");
 
-    // Unlock if the module never leaves "pending". Once status is "playing",
-    // the module's animation fallback removes the curtain.
+    // Unlock if the module never takes over. "playing" owns its own removal.
     setTimeout(() => {
-      if (intro.dataset.status === "playing" || !intro.hasAttribute("data-status")) return;
+      const status = intro.dataset.status;
+      if (status === "playing" || !intro.hasAttribute("data-status")) return;
       delete intro.dataset.status;
       root.removeAttribute("inert");
     }, 8000);
@@ -93,6 +101,21 @@ const characters = ["jumprope", "run", "stretch", "weights"] as const;
     rotate: 0deg;
     scale: 1;
     opacity: 0.001;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .intro-logotype {
+      opacity: 0;
+      scale: 1.03;
+      rotate: -5deg;
+      transition: 0.2s ease-out;
+      transition-property: opacity, scale;
+    }
+
+    .intro-screen[data-logo] .intro-logotype {
+      opacity: 1;
+      scale: 1;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
