@@ -5,7 +5,7 @@ interface Props {
   label?: string;
 }
 
-const { label = LABEL.idle } = Astro.props;
+const { label = LABEL.start } = Astro.props;
 ---
 
 <phase-label class="phase" aria-live="polite" aria-label={label}>
@@ -18,23 +18,28 @@ const { label = LABEL.idle } = Astro.props;
   import { LABEL } from "../scripts/labels.js";
   import { toPhaseType } from "../scripts/model.js";
 
-  const SLIDE_MS = 200;
-  const LINE = "1lh";
-  const SLIDE_DOWN = new Set([LABEL.prepare, LABEL.paused]);
-  /** Shared display copy — LABEL.start and LABEL.idle are both "Start". */
-  const START_COPY = new Set([LABEL.start, LABEL.idle]);
+  const SLIDE = {
+    bottom: { enter: "enter-bottom", exit: "exit-up" },
+    top: { enter: "enter-top", exit: "exit-down" },
+  };
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
-  /**
-   * Light-DOM phase label with slide transitions. Markup comes from Astro.
-   */
-  class PhaseLabelElement extends HTMLElement {
+  type PhaseType = "work" | "rest" | null;
+  type SlideFrom = "bottom" | "top";
+  type SlideControls = { stop: () => void };
+
+  function phaseType(text: string): PhaseType {
+    if (text === LABEL.work) return "work";
+    if (text === LABEL.rest) return "rest";
+    return null;
+  }
+
+  class PhaseLabel extends HTMLElement {
     #track: HTMLElement | null = null;
     #label: HTMLElement | null = null;
     #text = "";
-    /** @type {"work" | "rest" | null} */
-    #tone: "work" | "rest" | null = null;
-    /** @type {{ stop: () => void } | null} */
-    #active: { stop: () => void } | null = null;
+    #type: PhaseType = null;
+    #active: SlideControls | null = null;
     #ready = false;
 
     connectedCallback() {
@@ -44,7 +49,7 @@ const { label = LABEL.idle } = Astro.props;
       this.#track.setAttribute("aria-hidden", "true");
       this.#label = this.#track.querySelector(".phase-label");
       this.#text = this.#label?.textContent ?? "";
-      this.#tone = toPhaseType(this.#label?.dataset.tone ?? this.dataset.tone);
+      this.#type = toPhaseType(this.#label?.dataset.type ?? this.dataset.type);
 
       if (this.#text) this.setAttribute("aria-label", this.#text);
       this.#ready = true;
@@ -55,222 +60,249 @@ const { label = LABEL.idle } = Astro.props;
     }
 
     /**
-     * @param {string} next
-     * @param {{ tone?: string | null, animate?: boolean, from?: "bottom" | "top" }} [opts]
+     * @param {(typeof LABEL)[keyof typeof LABEL]} next
+     * @param {boolean} [animate]
      */
-    set(next: string, { tone: nextTone = null, animate: shouldAnimate = true, from }: {
-      tone?: string | null;
-      animate?: boolean;
-      from?: "bottom" | "top";
-    } = {}) {
+    set(next: (typeof LABEL)[keyof typeof LABEL], animate = true) {
       if (!this.#ready) this.connectedCallback();
 
-      const resolvedTone = toPhaseType(nextTone);
-      if (next === this.#text && resolvedTone === this.#tone && !this.#active) return;
+      const nextType = phaseType(next);
+      if (next === this.#text && nextType === this.#type && !this.#active) return;
 
-      if (next === LABEL.complete) {
-        this.#snap(next, resolvedTone);
+      if (this.#shouldSnap(next, animate)) {
+        this.#snap(next, nextType);
         return;
       }
 
-      if (START_COPY.has(next) && (this.#text === LABEL.complete || this.#text === LABEL.paused)) {
-        this.#snap(next, resolvedTone);
-        return;
-      }
+      const from = [LABEL.prepare, LABEL.paused].includes(next) ? "top" : "bottom";
+      this.#slide(next, nextType, from);
+    }
 
-      if (shouldAnimate && this.#text && next !== this.#text) {
-        const direction = from ?? (SLIDE_DOWN.has(next) ? "top" : "bottom");
-        this.#slide(next, resolvedTone, direction);
-        return;
-      }
-
-      this.#snap(next, resolvedTone);
+    /**
+     * Slide only when the visible copy changes and animation is allowed.
+     * Complete, and Start after Complete or Paused, always cut.
+     */
+    #shouldSnap(next: string, animate: boolean) {
+      if (!animate || !this.#text || next === this.#text) return true;
+      if (next === LABEL.complete) return true;
+      const leavingTerminal = this.#text === LABEL.complete || this.#text === LABEL.paused;
+      return next === LABEL.start && leavingTerminal;
     }
 
     #ensureTrack() {
       const existing = this.querySelector(".phase-track");
       if (existing instanceof HTMLElement) return existing;
 
-      const el = document.createElement("div");
-      el.className = "phase-track";
-      el.setAttribute("aria-hidden", "true");
+      const track = document.createElement("div");
+      track.className = "phase-track";
+      track.setAttribute("aria-hidden", "true");
       const label = this.querySelector(".phase-label");
-      if (label) el.append(label);
-      else if (this.textContent?.trim()) {
+      if (label) {
+        track.append(label);
+      } else if (this.textContent?.trim()) {
         const next = document.createElement("div");
         next.className = "phase-label";
         next.textContent = this.textContent.trim();
-        el.append(next);
+        track.append(next);
       }
-      this.replaceChildren(el);
-      return el;
+      this.replaceChildren(track);
+      return track;
     }
 
-    /** @param {string} next @param {"work" | "rest" | null} nextTone */
-    #makeLabel(next: string, nextTone: "work" | "rest" | null) {
+    #makeLabel(next: string, nextType: PhaseType) {
       const el = document.createElement("div");
       el.className = "phase-label";
       el.textContent = next;
-      if (nextTone) el.dataset.tone = nextTone;
+      this.#setType(el, nextType);
       return el;
     }
 
-    /** @param {"work" | "rest" | null} nextTone */
-    #applyRootTone(nextTone: "work" | "rest" | null) {
-      if (nextTone) this.dataset.tone = nextTone;
-      else delete this.dataset.tone;
+    #setType(el: HTMLElement, type: PhaseType) {
+      if (type) el.dataset.type = type;
+      else delete el.dataset.type;
     }
 
-    /** @param {string} next @param {"work" | "rest" | null} nextTone */
-    #snap(next: string, nextTone: "work" | "rest" | null) {
-      const track = this.#track ?? this.#ensureTrack();
-      this.#track = track;
+    #snap(next: string, nextType: PhaseType) {
+      this.#track ??= this.#ensureTrack();
+      const track = this.#track;
       this.#active?.stop();
       this.#active = null;
-      track.removeAttribute("style");
-      if (!this.#label) this.#label = this.#makeLabel(next, nextTone);
+
+      if (!this.#label) this.#label = this.#makeLabel(next, nextType);
       else {
         this.#label.textContent = next;
-        if (nextTone) this.#label.dataset.tone = nextTone;
-        else delete this.#label.dataset.tone;
+        this.#setType(this.#label, nextType);
       }
+
+      delete this.#label.dataset.motion;
       track.replaceChildren(this.#label);
       this.replaceChildren(track);
       this.setAttribute("aria-label", next);
-      this.#applyRootTone(nextTone);
+      this.#setType(this, nextType);
       this.#text = next;
-      this.#tone = nextTone;
+      this.#type = nextType;
     }
 
-    /**
-     * @param {string} next
-     * @param {"work" | "rest" | null} nextTone
-     * @param {"bottom" | "top"} [from]
-     */
-    #slide(next: string, nextTone: "work" | "rest" | null, from: "bottom" | "top" = "bottom") {
-      if (!this.#label || matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        this.#snap(next, nextTone);
+    #slide(next: string, nextType: PhaseType, from: SlideFrom) {
+      if (!this.#label || reducedMotion.matches) {
+        this.#snap(next, nextType);
         return;
       }
 
-      const track = this.#track ?? this.#ensureTrack();
-      this.#track = track;
+      this.#track ??= this.#ensureTrack();
+      const track = this.#track;
       this.#active?.stop();
 
       const outgoing = this.#label;
-      if (this.#tone) outgoing.dataset.tone = this.#tone;
-      const incoming = this.#makeLabel(next, nextTone);
-      const fromTop = from === "top";
-      const start = fromTop ? `translateY(-${LINE})` : "translateY(0)";
-      const end = fromTop ? "translateY(0)" : `translateY(-${LINE})`;
+      if (this.#type) this.#setType(outgoing, this.#type);
+      const incoming = this.#makeLabel(next, nextType);
+      const motion = SLIDE[from];
 
-      track.style.transition = "none";
-      track.replaceChildren(...(fromTop ? [incoming, outgoing] : [outgoing, incoming]));
-      track.style.transform = start;
-      void track.offsetWidth;
-      track.style.removeProperty("transition");
-      track.style.transform = end;
+      outgoing.dataset.motion = motion.exit;
+      incoming.dataset.motion = motion.enter;
+      track.replaceChildren(outgoing, incoming);
 
       this.setAttribute("aria-label", next);
-      delete this.dataset.tone;
-
+      this.#setType(this, null);
       this.#text = next;
-      this.#tone = nextTone;
+      this.#type = nextType;
       this.#label = incoming;
 
       let settled = false;
+
+      const release = () => {
+        outgoing.removeEventListener("animationend", onEnd);
+      };
+
       const settle = () => {
         if (settled) return;
         settled = true;
-        window.clearTimeout(timer);
-        track.removeEventListener("transitionend", onEnd);
+        release();
         if (this.#active !== controls) return;
         this.#active = null;
         outgoing.remove();
-        track.removeAttribute("style");
-        this.#applyRootTone(nextTone);
+        delete incoming.dataset.motion;
+        this.#setType(this, nextType);
       };
 
-      /** @type {{ stop: () => void }} */
-      const controls = {
+      const controls: SlideControls = {
         stop: () => {
           if (settled) return;
           settled = true;
-          window.clearTimeout(timer);
-          track.removeEventListener("transitionend", onEnd);
+          release();
+          // A newer set() replaces #active before this microtask. Snap only
+          // if this slide is still the one in charge.
           queueMicrotask(() => {
             if (this.#active !== controls) return;
             this.#active = null;
-            this.#snap(next, nextTone);
+            this.#snap(next, nextType);
           });
         },
       };
 
-      /** @param {Event} event */
-      const onEnd = (event) => {
-        if (event.target !== track || !(event instanceof TransitionEvent) || event.propertyName !== "transform")
-          return;
+      const onEnd = (event: Event) => {
+        if (event.target !== outgoing) return;
         settle();
       };
 
-      track.addEventListener("transitionend", onEnd);
-      const timer = window.setTimeout(settle, SLIDE_MS + 200);
+      outgoing.addEventListener("animationend", onEnd);
       this.#active = controls;
     }
   }
 
   if (!customElements.get("phase-label")) {
-    customElements.define("phase-label", PhaseLabelElement);
+    customElements.define("phase-label", PhaseLabel);
   }
 </script>
 
 <style>
   .phase {
+    --duration: 200ms;
+    --phase-line: 1lh;
+    --phase-pulse: pulse 1s steps(1, jump-end) 3;
+
     overflow: hidden;
     line-height: 1;
-    block-size: 1lh;
+    block-size: var(--phase-line);
     text-align: end;
     pointer-events: none;
   }
 
   .phase :global(.phase-track) {
-    display: flex;
-    flex-direction: column;
-    align-items: end;
-    transition: transform 200ms steps(3, jump-end);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .phase :global(.phase-track) {
-      transition: none;
-    }
+    display: grid;
+    justify-items: end;
   }
 
   .phase :global(.phase-label) {
-    display: block;
-    flex: 0 0 1.2em;
-    block-size: 1lh;
-    line-height: 1;
+    grid-area: 1 / 1;
+    translate: 0;
+    block-size: var(--phase-line);
     white-space: nowrap;
-    text-align: end;
     color: var(--color-digit, var(--color-fg));
   }
 
-  .phase[data-tone="work"],
-  .phase :global(.phase-label[data-tone="work"]) {
+  .phase :global(.phase-label[data-motion="enter-bottom"]) {
+    animation: phase-enter-bottom var(--duration) steps(3, jump-end) both;
+  }
+
+  .phase :global(.phase-label[data-motion="enter-top"]) {
+    animation: phase-enter-top var(--duration) steps(3, jump-end) both;
+  }
+
+  .phase :global(.phase-label[data-motion="exit-up"]) {
+    animation: phase-exit-up var(--duration) steps(3, jump-end) both;
+  }
+
+  .phase :global(.phase-label[data-motion="exit-down"]) {
+    animation: phase-exit-down var(--duration) steps(3, jump-end) both;
+  }
+
+  @keyframes phase-enter-bottom {
+    from {
+      translate: 0 100%;
+    }
+  }
+
+  @keyframes phase-enter-top {
+    from {
+      translate: 0 -100%;
+    }
+  }
+
+  @keyframes phase-exit-up {
+    to {
+      translate: 0 -100%;
+    }
+  }
+
+  @keyframes phase-exit-down {
+    to {
+      translate: 0 100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .phase :global(.phase-label[data-motion]) {
+      animation: none;
+    }
+  }
+
+  .phase[data-type="work"],
+  .phase :global(.phase-label[data-type="work"]) {
     color: var(--color-work);
   }
 
-  .phase[data-tone="rest"],
-  .phase :global(.phase-label[data-tone="rest"]) {
+  .phase[data-type="rest"],
+  .phase :global(.phase-label[data-type="rest"]) {
     color: var(--color-rest);
   }
 
   :global([data-status="preparing"]) .phase {
-    animation: pulse 1s steps(1, jump-end) 3;
+    animation: var(--phase-pulse);
   }
 
   :global([data-status="complete"]) .phase :global(.phase-label) {
-    animation: pulse 1s steps(1, jump-end) 3 forwards;
+    animation: var(--phase-pulse);
+    animation-fill-mode: forwards;
   }
 </style>

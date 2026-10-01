@@ -23,7 +23,7 @@ function requireEl(root, selector) {
 
 /**
  * @typedef {HTMLElement & {
- *   set: (next: string, opts?: { tone?: string | null, animate?: boolean, from?: "bottom" | "top" }) => void,
+ *   set: (next: (typeof LABEL)[keyof typeof LABEL], animate?: boolean) => void,
  *   getText: () => string,
  * }} PhaseLabelEl
  */
@@ -248,7 +248,7 @@ export function enhancePlayer(root, options) {
       onBeat: (n) => {
         // Stagger into `3` starts with "Get ready" and the first blip.
         if (n === COUNTDOWN_SECONDS) {
-          phaseLabel.set(LABEL.set, { animate: false });
+          phaseLabel.set(LABEL.set, false);
         }
         $time.setCountdownLabel(n);
         blipCountdown(n);
@@ -271,7 +271,7 @@ export function enhancePlayer(root, options) {
     stopCountdownTimeline();
     $time.setTime(currentConfig.workSeconds);
     setIdleRound(currentConfig);
-    phaseLabel.set(LABEL.idle);
+    phaseLabel.set(LABEL.start);
     setPlaybackLabel(LABEL.start);
     $playback.disabled = false;
     $reset.disabled = false;
@@ -411,16 +411,14 @@ export function enhancePlayer(root, options) {
         phaseLabel.set(LABEL.prepare);
         if (startCountdown) startCountdownTimeline();
       } else {
-        phaseLabel.set(LABEL.set, { animate: false });
+        phaseLabel.set(LABEL.set, false);
       }
       setRound(null);
       if (syncRing) progressRing?.reset();
       counterRing?.clear();
     } else if (detail.phase) {
       stopCountdownTimeline();
-      const type = detail.phase.type;
-      const tone = toPhaseType(detail.phase.type);
-      phaseLabel.set(LABEL[type] ?? type, { tone });
+      phaseLabel.set(LABEL[detail.phase.type]);
       setRound(detail.round ?? 1);
       counterRing?.setActive(detail.round ?? 1, detail.totalRounds);
       if (syncRing) {
