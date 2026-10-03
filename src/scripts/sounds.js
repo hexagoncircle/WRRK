@@ -529,14 +529,14 @@ export function isMuted() {
 }
 
 /**
- * @param {SoundRecipe} recipe
+ * @param {SoundRecipe} sound
  * @param {{ pan?: number }} [opts]
  */
-export function play(recipe, opts) {
-  if (muted || !recipe) return;
+export function play(sound, opts) {
+  if (muted || !sound) return;
 
   resumeAudio({ bounce: needsRevive }).then((ok) => {
     if (!ok || !audioCtx || !output) return;
-    renderRecipe(audioCtx, output, recipe, audioCtx.currentTime + LOOKAHEAD, opts);
+    renderRecipe(audioCtx, output, sound, audioCtx.currentTime + LOOKAHEAD, opts);
   });
 }
