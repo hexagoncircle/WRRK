@@ -152,7 +152,7 @@ const roleDescription = duration ? "Duration" : "Number field";
 </style>
 
 <script>
-  import { play } from "../scripts/sounds.js";
+  import { play, pressSound } from "../scripts/sounds.js";
   import { clamp, formatClock, formatMSS } from "../scripts/utils.js";
 
   /** Encode total seconds as an M SS digit buffer (e.g. 3:45 → 345). */
@@ -400,7 +400,7 @@ const roleDescription = duration ? "Duration" : "Number field";
       const next = clamp(current + delta, this.#min, this.#max);
       if (next === current) return;
       this.#setValue(next);
-      play("press");
+      play(pressSound);
       if (this.#inputFocused()) this.#armReplace();
     }
 

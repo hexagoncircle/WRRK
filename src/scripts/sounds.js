@@ -1,10 +1,194 @@
 import { clampNumber } from "./utils.js";
-import { RECIPES } from "./sound-recipes.js";
 
-/** @typedef {import('./sound-recipes.js').Shimmer} Shimmer */
-/** @typedef {import('./sound-recipes.js').ToneLayer} ToneLayer */
-/** @typedef {import('./sound-recipes.js').NoiseLayer} NoiseLayer */
-/** @typedef {import('./sound-recipes.js').SoundRecipe} SoundRecipe */
+/**
+ * @typedef {{
+ *   delay: number,
+ *   feedback: number,
+ *   wet: number,
+ *   lowpass: number,
+ * }} Shimmer
+ */
+
+/**
+ * @typedef {{
+ *   kind: "tone",
+ *   note: string,
+ *   offset?: number,
+ *   attack: number,
+ *   decay: number,
+ *   peak: number,
+ * }} ToneLayer
+ */
+
+/**
+ * @typedef {{
+ *   kind: "noise",
+ *   filterType: BiquadFilterType,
+ *   filterFrequency: number,
+ *   filterQ?: number,
+ *   offset?: number,
+ *   attack: number,
+ *   decay: number,
+ *   peak: number,
+ * }} NoiseLayer
+ */
+
+/** @typedef {ToneLayer | NoiseLayer} SoundLayer */
+
+/**
+ * @typedef {{
+ *   masterGain: number,
+ *   layers: SoundLayer[],
+ *   shimmer?: Shimmer,
+ * }} SoundRecipe
+ */
+
+/** @type {Shimmer} */
+const MELODIC_SHIMMER = {
+  delay: 0.1,
+  feedback: 0.22,
+  wet: 0.16,
+  lowpass: 4500,
+};
+
+/**
+ * @param {string} note
+ * @param {{ offset?: number, attack?: number, decay?: number, peak?: number }} [options]
+ * @returns {ToneLayer}
+ */
+function tone(note, { offset, attack = 0.006, decay = 0.2, peak = 0.08 } = {}) {
+  return {
+    kind: "tone",
+    note,
+    ...(offset === undefined ? {} : { offset }),
+    attack,
+    decay,
+    peak,
+  };
+}
+
+/** @type {SoundRecipe} */
+export const blipSound = {
+  masterGain: 0.5,
+  layers: [
+    tone("C#5", { attack: 0.008, decay: 0.1, peak: 0.08 }),
+    tone("G#5", { offset: 0.02, attack: 0.008, decay: 0.1, peak: 0.02 }),
+  ],
+};
+
+/** @type {SoundRecipe} */
+export const completedSound = {
+  masterGain: 0.55,
+  layers: [
+    tone("C#5", { decay: 0.18 }),
+    tone("G#5", { offset: 0.09, decay: 0.18 }),
+    tone("F5", { offset: 0.18, decay: 0.18 }),
+    tone("B5", { offset: 0.27 }),
+    tone("C#6", { offset: 0.36, decay: 0.28, peak: 0.09 }),
+  ],
+  shimmer: { delay: 0.12, feedback: 0.25, wet: 0.2, lowpass: 4000 },
+};
+
+/** @type {SoundRecipe} */
+export const muteSound = {
+  masterGain: 0.3,
+  layers: [
+    tone("E5", { attack: 0.002, decay: 0.1, peak: 0.09 }),
+    tone("C#5", { offset: 0.09, attack: 0.002, decay: 0.1 }),
+    tone("A4", { offset: 0.18, attack: 0.002, decay: 0.1 }),
+    tone("G#4", { offset: 0.26, attack: 0.002, decay: 0.1 }),
+  ],
+};
+
+/** @type {SoundRecipe} */
+export const pauseSound = {
+  masterGain: 0.55,
+  layers: [
+    tone("G#5", { peak: 0.09 }),
+    tone("E5", { offset: 0.09 }),
+    tone("G#5", { offset: 0.18, decay: 0.22 }),
+  ],
+  shimmer: MELODIC_SHIMMER,
+};
+
+/** @type {SoundRecipe} */
+export const pressSound = {
+  masterGain: 0.1,
+  layers: [
+    {
+      kind: "noise",
+      filterType: "bandpass",
+      filterFrequency: 5000,
+      filterQ: 2,
+      attack: 0.001,
+      decay: 0.01,
+      peak: 0.2,
+    },
+  ],
+};
+
+/** @type {SoundRecipe} */
+export const restSound = {
+  masterGain: 0.55,
+  layers: [
+    tone("B5", { peak: 0.09 }),
+    tone("G#5", { offset: 0.09 }),
+    tone("A4", { offset: 0.18, decay: 0.24, peak: 0.07 }),
+  ],
+  shimmer: MELODIC_SHIMMER,
+};
+
+/** @type {SoundRecipe} */
+export const resetSound = {
+  masterGain: 0.55,
+  layers: [
+    tone("G#5", { decay: 0.14 }),
+    tone("E4", { offset: 0.04, attack: 0.004, peak: 0.02 }),
+  ],
+  shimmer: MELODIC_SHIMMER,
+};
+
+/** @type {SoundRecipe} */
+export const resumeSound = {
+  masterGain: 0.55,
+  layers: [
+    tone("C#5", { peak: 0.09 }),
+    tone("G#5", { offset: 0.09 }),
+    tone("E5", { offset: 0.18, decay: 0.22 }),
+  ],
+  shimmer: MELODIC_SHIMMER,
+};
+
+/** @type {SoundRecipe} */
+export const startSound = {
+  masterGain: 0.5,
+  layers: [
+    tone("C#5", { attack: 0.004, decay: 0.09, peak: 0.06 }),
+    tone("G#5", { offset: 0.06, attack: 0.004, decay: 0.1, peak: 0.06 }),
+    tone("C#6", { offset: 0.12, attack: 0.004, decay: 0.18, peak: 0.07 }),
+  ],
+  shimmer: { delay: 0.2, feedback: 0.1, wet: 0.2, lowpass: 800 },
+};
+
+/** @type {SoundRecipe} */
+export const workSound = {
+  masterGain: 0.55,
+  layers: [
+    tone("C#5", { peak: 0.09 }),
+    tone("G#5", { offset: 0.09, decay: 0.22 }),
+  ],
+  shimmer: MELODIC_SHIMMER,
+};
+
+/** @type {SoundRecipe} */
+export const unmuteSound = {
+  masterGain: 0.3,
+  layers: [
+    tone("A4", { attack: 0.002, decay: 0.1 }),
+    tone("C#5", { offset: 0.09, attack: 0.002, decay: 0.1 }),
+    tone("E5", { offset: 0.18, attack: 0.002, decay: 0.1, peak: 0.09 }),
+  ],
+};
 
 /** @type {AudioContext | null} */
 let audioCtx = null;
@@ -41,6 +225,7 @@ const CLEANUP_MARGIN = 0.05;
 const LOOKAHEAD = 0.02;
 const INAUDIBLE_GAIN = 0.001;
 const ENVELOPE_FLOOR = 0.0001;
+/** Makeup so layer peaks can stay in a 0–1 authoring range. */
 const OUTPUT_GAIN = 20;
 
 const NOTE_OFFSETS = {
@@ -101,8 +286,6 @@ function setupAudio() {
   if (hasLiveContext()) return true;
 
   teardownAudio();
-
-  // Audible with the ringer off while the app is open.
   setAudioSessionType("playback");
 
   if (typeof AudioContext === "undefined") return false;
@@ -141,7 +324,6 @@ async function resumeAudio({ forceRecreate = false, bounce = false } = {}) {
     return true;
   }
 
-  // Closed or still unusable — rebuild the graph once.
   if (!forceRecreate) return resumeAudio({ forceRecreate: true });
   return false;
 }
@@ -180,7 +362,6 @@ document.addEventListener(
 );
 
 /**
- * Applies a standard Attack/Decay envelope to an audio source.
  * @param {AudioContext} audio
  * @param {AudioNode} source
  * @param {AudioNode} destination
@@ -292,14 +473,14 @@ function shimmerTail(shimmer) {
 
 /**
  * @param {AudioContext} audio
- * @param {GainNode} output
+ * @param {GainNode} destination
  * @param {SoundRecipe} recipe
  * @param {number} startTime
- * @param {{ volume?: number, pan?: number }} [opts]
+ * @param {{ pan?: number }} [opts]
  */
-function renderRecipe(audio, output, recipe, startTime, { volume = 1, pan = 0 } = {}) {
+function renderRecipe(audio, destination, recipe, startTime, { pan = 0 } = {}) {
   const bus = audio.createGain();
-  bus.gain.value = recipe.masterGain * volume;
+  bus.gain.value = recipe.masterGain;
 
   /** @type {AudioNode[]} */
   const cleanupNodes = [bus];
@@ -308,14 +489,14 @@ function renderRecipe(audio, output, recipe, startTime, { volume = 1, pan = 0 } 
   if (clampedPan !== 0) {
     const panner = audio.createStereoPanner();
     panner.pan.setValueAtTime(clampedPan, startTime);
-    bus.connect(panner).connect(output);
+    bus.connect(panner).connect(destination);
     cleanupNodes.push(panner);
   } else {
-    bus.connect(output);
+    bus.connect(destination);
   }
 
   if (recipe.shimmer) {
-    cleanupNodes.push(...attachShimmer(audio, bus, output, recipe.shimmer));
+    cleanupNodes.push(...attachShimmer(audio, bus, destination, recipe.shimmer));
   }
 
   for (const layer of recipe.layers) {
@@ -336,11 +517,7 @@ function renderRecipe(audio, output, recipe, startTime, { volume = 1, pan = 0 } 
   }, cleanupAfterMs);
 }
 
-/**
- * When muted, `play` is a no-op until unmuted.
- * Preference is persisted so SoundControl restores on load.
- * @param {boolean} value
- */
+/** @param {boolean} value */
 export function setMuted(value) {
   muted = Boolean(value);
   saveMutedPreference(muted);
@@ -352,14 +529,11 @@ export function isMuted() {
 }
 
 /**
- * Play a sound effect.
- * @param {string} name
- * @param {{ volume?: number, pan?: number }} [opts]
+ * @param {SoundRecipe} recipe
+ * @param {{ pan?: number }} [opts]
  */
-export function play(name, opts) {
-  if (muted) return;
-  const recipe = RECIPES[name];
-  if (!recipe) return;
+export function play(recipe, opts) {
+  if (muted || !recipe) return;
 
   resumeAudio({ bounce: needsRevive }).then((ok) => {
     if (!ok || !audioCtx || !output) return;

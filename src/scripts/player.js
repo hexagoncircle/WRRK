@@ -3,7 +3,17 @@ import { STATUS, TimerEngine } from "./engine.js";
 import { createTimeout, formatMSS } from "./utils.js";
 import { LABEL } from "./labels.js";
 import { COUNTDOWN_SECONDS, PREPARE_SECONDS, toPhaseType, totalWorkoutSeconds } from "./model.js";
-import { play } from "./sounds.js";
+import {
+  blipSound,
+  completedSound,
+  pauseSound,
+  play,
+  resetSound,
+  restSound,
+  resumeSound,
+  startSound,
+  workSound,
+} from "./sounds.js";
 import { WakeLockController } from "./wake-lock.js";
 
 const COMPLETE_RESET_MS = 3000;
@@ -141,7 +151,7 @@ export function enhancePlayer(root, options) {
   /** @param {number} sec */
   const blipCountdown = (sec) => {
     if (sec < 1 || sec > 3) return;
-    play("blip", { pan: (2 - sec) * 0.25 });
+    play(blipSound, { pan: (2 - sec) * 0.25 });
   };
 
   const syncRingTotals = () => {
@@ -302,8 +312,10 @@ export function enhancePlayer(root, options) {
    */
   const onPhaseChange = (event) => {
     const detail = event.detail;
-    if (detail.status === STATUS.running && toPhaseType(detail.phase?.type)) {
-      play(detail.phase.type);
+    if (detail.status === STATUS.running) {
+      const phaseType = toPhaseType(detail.phase?.type);
+      if (phaseType === "work") play(workSound);
+      else if (phaseType === "rest") play(restSound);
     }
     lastBlippedSecond = null;
     renderPhase(detail, {
@@ -347,7 +359,7 @@ export function enhancePlayer(root, options) {
     nextEngine.addEventListener("press", onPress);
 
     nextEngine.addEventListener("resume", (event) => {
-      play("resume");
+      play(resumeSound);
       const detail = /** @type {CustomEvent<PhaseDetail>} */ (event).detail;
       renderPhase(detail, { syncRing: false });
       if (isStartup(detail.status)) {
@@ -359,7 +371,7 @@ export function enhancePlayer(root, options) {
     });
 
     nextEngine.addEventListener("pause", () => {
-      play("pause");
+      play(pauseSound);
       countdownTimeline?.pause();
       setPlaybackLabel(LABEL.resume);
       phaseLabel.set(LABEL.paused);
@@ -375,7 +387,7 @@ export function enhancePlayer(root, options) {
     nextEngine.addEventListener("complete", async () => {
       const wasFinalWork = lastPhaseType === "work";
       lastPhaseType = null;
-      play("completed");
+      play(completedSound);
       stopCountdownTimeline();
       $time.setTime(0);
       phaseLabel.set(LABEL.complete);
@@ -450,7 +462,7 @@ export function enhancePlayer(root, options) {
     // Sound only in this turn. Engine and digit dance run after so they can't stall
     // AudioContext startup on the main thread.
     // Request wake lock in the same turn as the tap for reliability.
-    if (engine.status === STATUS.idle) play("start");
+    if (engine.status === STATUS.idle) play(startSound);
     void wakeLock.request();
     setTimeout(() => {
       startPlayback();
@@ -458,7 +470,7 @@ export function enhancePlayer(root, options) {
   });
 
   $reset.addEventListener("click", () => {
-    play("reset");
+    play(resetSound);
     applyConfig(undefined, { lightUp: true });
   });
 

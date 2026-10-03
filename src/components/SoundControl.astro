@@ -22,7 +22,7 @@ const { class: className, ...rest } = Astro.props;
 </sound-control>
 
 <script>
-  import { isMuted, play, setMuted } from "../scripts/sounds.js";
+  import { isMuted, muteSound, play, setMuted, unmuteSound } from "../scripts/sounds.js";
 
   /**
    * Light-DOM mute toggle. Markup comes from Astro; this element wires press state.
@@ -42,12 +42,12 @@ const { class: className, ...rest } = Astro.props;
 
       button.addEventListener("click", () => {
         if (!isMuted()) {
-          play("mute");
+          play(muteSound);
           setMuted(true);
           this.#syncPressed(true);
         } else {
           setMuted(false);
-          play("unmute");
+          play(unmuteSound);
           this.#syncPressed(false);
         }
       });
