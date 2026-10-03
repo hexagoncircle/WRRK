@@ -100,15 +100,11 @@ export function enhancePlayer(root, options) {
 
   const $progressRing = root.querySelector("progress-ring");
   const progressRing =
-    $progressRing instanceof HTMLElement
-      ? /** @type {ProgressRingEl} */ ($progressRing)
-      : null;
+    $progressRing instanceof HTMLElement ? /** @type {ProgressRingEl} */ ($progressRing) : null;
 
   const $counterRing = root.querySelector("counter-ring");
   const counterRing =
-    $counterRing instanceof HTMLElement
-      ? /** @type {CounterRingEl} */ ($counterRing)
-      : null;
+    $counterRing instanceof HTMLElement ? /** @type {CounterRingEl} */ ($counterRing) : null;
 
   /** @param {string} text */
   const setPlaybackLabel = (text) => {
@@ -120,7 +116,7 @@ export function enhancePlayer(root, options) {
   const setRound = (current) => {
     const pending = current == null;
     $roundLabel.hidden = pending;
-    $roundCurrent.textContent = pending ? "––" : String(current);
+    $roundCurrent.textContent = pending ? "" : String(current);
   };
 
   /** @param {TimerConfig} config */
