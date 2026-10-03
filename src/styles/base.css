@@ -27,25 +27,31 @@
   --ring-gap: 4;
   --ring-stroke: 6;
 
-  --page-pad: 2.5rem;
-  --fit-w: calc(100dvw - 2 * var(--page-pad));
-  --fit-h: calc(100dvh - 2 * var(--page-pad));
-  --ui-scale: min(var(--fit-w) / 18, var(--fit-h) / 24);
+  --ui-pad-inline: clamp(1.5rem, 10vw, 4rem);
+  --ui-pad-block: clamp(1rem, 5vh, 2.5rem);
+  --ui-w: 18;
+  --ui-h: 24;
+  --ui-scale: min(
+    (100vw - var(--ui-pad-inline) * 2) / var(--ui-w),
+    (100vh - var(--ui-pad-block) * 2) / var(--ui-h)
+  );
 
+  /* Side-by-side: settings + timer, rings underneath */
   @media (min-aspect-ratio: 6/5) {
-    /* Side-by-side setup + timer, rings under clock */
-    --ui-scale: min(var(--fit-w) / 28, var(--fit-h) / 20);
+    --ui-w: 28;
+    --ui-h: 20;
   }
 
+  /* Wide timer: settings, clock, rings in a row */
   @media (min-aspect-ratio: 3/2) {
-    /* Wide timer: clock + rings in a row */
-    --ui-scale: min(var(--fit-w) / 36, var(--fit-h) / 16);
+    --ui-w: 36;
+    --ui-h: 16;
   }
 
-  /* Phone landscape: denser UI */
+  /* Phone landscape: fill more of squat viewport */
   @media (min-aspect-ratio: 3/2) and (height <= 28rem) {
-    --page-pad: 1rem;
-    --ui-scale: min(var(--fit-w) / 34, var(--fit-h) / 14);
+    --ui-w: 34;
+    --ui-h: 14;
   }
 }
 
@@ -59,9 +65,10 @@ body {
   display: flex;
   width: 100%;
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100svh;
   font-family: var(--font-main);
-  padding: var(--page-pad);
+  padding-inline: var(--ui-pad-inline);
+  padding-block: var(--ui-pad-block);
   background-color: var(--color-bg);
   color: var(--color-fg);
   font-size: clamp(0.5rem, var(--ui-scale), 3.25rem);

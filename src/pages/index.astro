@@ -120,11 +120,15 @@ import {
   .settings {
     margin: 0;
     margin-block-start: auto;
-    flex: 0 1 auto;
+    flex-wrap: wrap;
     display: flex;
+    column-gap: 2.4em;
     row-gap: 1.2em;
     justify-content: space-between;
-    transition: color 300ms ease-out;
+
+    > :global(*) {
+      margin-inline: auto;
+    }
 
     &:focus-within :global(number-field:not(:focus-within)) {
       color: var(--color-fg-muted);
@@ -146,7 +150,6 @@ import {
   @media (min-aspect-ratio: 6/5) {
     .screen {
       flex-direction: row;
-      height: fit-content;
       margin-block: auto;
     }
 
@@ -156,9 +159,9 @@ import {
     }
   }
 
-  @media (width <= 24rem) or (height <= 28rem) {
+  @media (max-aspect-ratio: 3/2) {
     .settings {
-      flex-direction: column;
+      padding-block: 0.2em;
     }
   }
 </style>
