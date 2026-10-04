@@ -2,7 +2,7 @@
 import Ring from "./Ring.astro";
 import { phasePercents } from "../scripts/progress-ring.js";
 
-export interface Props {
+interface Props {
   work: number;
   rest: number;
   class?: string;
@@ -14,22 +14,19 @@ const { workPercent, restPercent } = phasePercents(work, rest);
 
 <progress-ring
   class:list={["progress-ring", className]}
-  style={`
-    --progress-work-percent: ${workPercent};
-    --progress-rest-percent: ${restPercent};
-  `}
+  style={`--work-percent: ${workPercent}; --rest-percent: ${restPercent}`}
   {...attrs}
 >
   <Ring>
     <g data-phase="work" style="--phase-progress: 100;">
-      <circle class="progress-track" cx="50" cy="50" r="45" pathLength="100"></circle>
-      <circle class="progress-fill" cx="50" cy="50" r="45" pathLength="100"></circle>
+      <circle class="track" cx="50" cy="50" r="45" pathLength="100"></circle>
+      <circle class="fill" cx="50" cy="50" r="45" pathLength="100"></circle>
     </g>
     <g data-phase="rest" style="--phase-progress: 100;">
-      <circle class="progress-track" cx="50" cy="50" r="45" pathLength="100"></circle>
-      <circle class="progress-fill" cx="50" cy="50" r="45" pathLength="100"></circle>
+      <circle class="track" cx="50" cy="50" r="45" pathLength="100"></circle>
+      <circle class="fill" cx="50" cy="50" r="45" pathLength="100"></circle>
     </g>
-    <div class="progress-dot" slot="center"></div>
+    <div class="dot" slot="center"></div>
   </Ring>
 </progress-ring>
 
@@ -38,53 +35,26 @@ const { workPercent, restPercent } = phasePercents(work, rest);
   import { phasePercents } from "../scripts/progress-ring.js";
 
   class ProgressRing extends HTMLElement {
-    #$work: SVGGElement | null = null;
-    #$rest: SVGGElement | null = null;
+    $work!: SVGGElement;
+    $rest!: SVGGElement;
     #prevWork = 0;
     #prevRest = 0;
     #transitionSeconds = 0;
-    #ready = false;
 
     connectedCallback() {
-      this.#ensureReady();
+      this.$work = this.querySelector('[data-phase="work"]') as SVGGElement;
+      this.$rest = this.querySelector('[data-phase="rest"]') as SVGGElement;
+      this.#transitionSeconds =
+        Number.parseFloat(getComputedStyle(this).getPropertyValue("--duration")) || 0;
     }
 
-    #ensureReady() {
-      if (this.#ready) return;
-
-      const work = this.querySelector('[data-phase="work"]');
-      const rest = this.querySelector('[data-phase="rest"]');
-      this.#$work = work instanceof SVGGElement ? work : null;
-      this.#$rest = rest instanceof SVGGElement ? rest : null;
-      this.#transitionSeconds = Number.parseFloat(
-        getComputedStyle(this).getPropertyValue("--duration"),
-      );
-      this.#ready = true;
-    }
-
-    /**
-     * Resize phase geometry from work/rest durations.
-     * Pass restSeconds=0 for last-round (work-only) layout.
-     * @param {number} workSeconds
-     * @param {number} restSeconds
-     * @param {{ fill?: boolean }} [opts] When fill is true (default), snap fills to full.
-     */
     setTotals(workSeconds: number, restSeconds: number, { fill = true }: { fill?: boolean } = {}) {
-      this.#ensureReady();
       const { workPercent, restPercent } = phasePercents(workSeconds, restSeconds);
-      this.style.setProperty("--progress-work-percent", String(workPercent));
-      this.style.setProperty("--progress-rest-percent", String(restPercent));
+      this.style.setProperty("--work-percent", String(workPercent));
+      this.style.setProperty("--rest-percent", String(restPercent));
       if (fill) this.#paint(100, 100, { instant: true });
     }
 
-    /**
-     * @param {{
-     *   phase: 'work' | 'rest' | null,
-     *   remainingSeconds: number,
-     *   durationSeconds: number,
-     * }} state
-     * @param {{ settle?: boolean }} [opts] Snap to true progress (e.g. on pause).
-     */
     setProgress(
       {
         phase,
@@ -97,8 +67,6 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       },
       { settle = false }: { settle?: boolean } = {},
     ) {
-      this.#ensureReady();
-
       const duration = Math.max(0, Number(durationSeconds) || 0);
       const remaining = Math.max(0, Number(remainingSeconds) || 0);
       const elapsed = duration === 0 ? 0 : duration - remaining;
@@ -121,11 +89,11 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       const work = workInstant ? actual.work : led.work;
       const rest = restInstant ? actual.rest : led.rest;
 
-      this.#setPhaseProgress(this.#$work, work, {
+      this.#setPhaseProgress(this.$work, work, {
         instant: workInstant,
         durationSeconds: leadSec,
       });
-      this.#setPhaseProgress(this.#$rest, rest, {
+      this.#setPhaseProgress(this.$rest, rest, {
         instant: restInstant,
         durationSeconds: leadSec,
       });
@@ -134,17 +102,11 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     }
 
     reset() {
-      this.#ensureReady();
       this.#paint(0, 0, { instant: true });
     }
 
-    /**
-     * @param {SVGGElement | null} el
-     * @param {number} value
-     * @param {{ instant?: boolean, durationSeconds?: number }} [opts]
-     */
     #setPhaseProgress(
-      el: SVGGElement | null,
+      el: SVGGElement,
       value: number,
       {
         instant = false,
@@ -154,8 +116,6 @@ const { workPercent, restPercent } = phasePercents(work, rest);
         durationSeconds?: number;
       } = {},
     ) {
-      if (!el) return;
-
       if (durationSeconds >= this.#transitionSeconds - 0.001) {
         el.style.removeProperty("--duration");
       } else {
@@ -171,8 +131,8 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     }
 
     #paint(workProgress: number, restProgress: number, { instant = false } = {}) {
-      this.#setPhaseProgress(this.#$work, workProgress, { instant });
-      this.#setPhaseProgress(this.#$rest, restProgress, { instant });
+      this.#setPhaseProgress(this.$work, workProgress, { instant });
+      this.#setPhaseProgress(this.$rest, restProgress, { instant });
       this.#prevWork = workProgress;
       this.#prevRest = restProgress;
     }
@@ -182,7 +142,6 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       return clampNumber((elapsed / duration) * 100, 0, 100);
     }
 
-    /** Map a single-phase progress value onto work/rest fills. */
     #valuesForPhase(phase: "work" | "rest" | null, progress: number) {
       if (phase === "work") return { work: progress, rest: 0 };
       if (phase === "rest") return { work: 100, rest: progress };
@@ -215,34 +174,34 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     opacity: min(1, var(--arc-length));
   }
 
-  .progress-track {
+  .track {
     color: var(--color-fg-subtle);
     stroke-dashoffset: 0;
   }
 
-  .progress-fill {
-    stroke: var(--progress-fill-stroke);
+  .fill {
+    stroke: var(--fill-stroke);
     stroke-dashoffset: calc(var(--arc-length) * (1 - var(--phase-progress) / 100));
     opacity: min(1, var(--phase-progress), var(--arc-length));
   }
 
   [data-phase="work"] {
-    --arc-length: max(0, calc(var(--progress-work-percent) - var(--ring-gap)));
-    --progress-fill-stroke: var(--color-work);
+    --arc-length: max(0, calc(var(--work-percent) - var(--ring-gap)));
+    --fill-stroke: var(--color-work);
     transform: rotate(calc(var(--ring-gap) * 2deg));
   }
 
   [data-phase="rest"] {
-    --arc-length: max(0, calc(var(--progress-rest-percent) - var(--ring-gap)));
-    --progress-fill-stroke: var(--color-rest);
-    transform: rotate(calc(var(--ring-gap) * 2deg + var(--progress-work-percent) * 3.6deg));
+    --arc-length: max(0, calc(var(--rest-percent) - var(--ring-gap)));
+    --fill-stroke: var(--color-rest);
+    transform: rotate(calc(var(--ring-gap) * 2deg + var(--work-percent) * 3.6deg));
   }
 
   :global([data-status="complete"]) [data-phase] {
-    --progress-fill-stroke: var(--color-digit, var(--color-fg));
+    --fill-stroke: var(--color-digit, var(--color-fg));
   }
 
-  .progress-dot {
+  .dot {
     --size: 0.75em;
     width: var(--size);
     height: var(--size);
@@ -251,21 +210,21 @@ const { workPercent, restPercent } = phasePercents(work, rest);
   }
 
   /* [data-phase] for the blinking dot lives on the app root, not these <g>s. */
-  :global([data-phase="rest"]) .progress-dot {
+  :global([data-phase="rest"]) .dot {
     animation: dot-pulse 1s steps(3) infinite alternate;
   }
 
-  :global([data-phase="work"]) .progress-dot {
+  :global([data-phase="work"]) .dot {
     animation: dot-work 0.5s steps(1) infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :global([data-phase="work"]) .progress-dot {
+    :global([data-phase="work"]) .dot {
       animation: dot-work-scale 0.5s steps(1) infinite;
     }
   }
 
-  :global([data-status="paused"]) .progress-dot {
+  :global([data-status="paused"]) .dot {
     animation: none;
   }
 
