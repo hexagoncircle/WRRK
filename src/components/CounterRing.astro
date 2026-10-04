@@ -26,79 +26,64 @@ const { count, class: className, ...rest } = Astro.props;
   import { clamp, createTimeout } from "../scripts/utils.js";
 
   const ANNOUNCE_MS = 3000;
-  const PATH_LENGTH = 100;
   const GAP_SHARE = 0.6;
   const ROUND_LINECAP_THRESHOLD = 30;
 
-  /**
-   * Light-DOM segmented rounds counter. Markup comes from Astro.
-   */
-  class CounterRingElement extends HTMLElement {
-    #$fill: Element | null = null;
-    #$active: Element | null = null;
-    #$current: Element | null = null;
-    #$total: Element | null = null;
+  class CounterRing extends HTMLElement {
+    #$fill!: SVGElement;
+    #$active!: SVGElement;
+    #$current!: Element;
+    #$total!: Element;
 
     #count = 1;
     #announcedRound = 0;
     #announceTimer = createTimeout();
     #baseGap = 0;
-    #ready = false;
 
     connectedCallback() {
-      if (this.#ready) return;
-
-      this.#$fill = this.querySelector(".fill");
-      this.#$active = this.querySelector(".active");
-      this.#$current = this.querySelector(".current");
-      this.#$total = this.querySelector(".total");
-
+      this.#$fill = this.querySelector(".fill") as SVGElement;
+      this.#$active = this.querySelector(".active") as SVGElement;
+      this.#$current = this.querySelector(".current") as Element;
+      this.#$total = this.querySelector(".total") as Element;
       this.#count = clamp(this.style.getPropertyValue("--count"), 1, Number.MAX_SAFE_INTEGER);
-      const gapSource = this.querySelector(".ring") ?? this;
       this.#baseGap =
-        Number.parseFloat(getComputedStyle(gapSource).getPropertyValue("--ring-gap")) || 0;
-
-      this.#ready = true;
+        Number.parseFloat(getComputedStyle(this).getPropertyValue("--ring-gap")) || 0;
       this.showAll();
     }
 
     setCount(next: number) {
-      if (!this.#ready) this.connectedCallback();
       this.#count = clamp(next, 1, Number.MAX_SAFE_INTEGER);
       this.style.setProperty("--count", String(this.#count));
-      if (this.#$total) this.#$total.textContent = String(this.#count);
+      this.#$total.textContent = String(this.#count);
       this.#applyGeometry();
     }
 
     /** @param {number} [current=1] 1-based label — pass total on complete so N/N persists */
     showAll(current = 1) {
-      if (!this.#ready) this.connectedCallback();
       this.#announcedRound = 0;
       this.#stopAnnounce();
       this.#paintFill(this.#count);
-      if (this.#$current) this.#$current.textContent = String(clamp(current, 1, this.#count));
+      this.#$current.textContent = String(clamp(current, 1, this.#count));
     }
 
     clear() {
-      if (!this.#ready) this.connectedCallback();
       this.#announcedRound = 0;
       this.#stopAnnounce();
       this.#paintFill(0);
-      if (this.#$current) this.#$current.textContent = "1";
+      this.#$current.textContent = "1";
     }
 
     /** @param {number} round 1-based current round */
     setActive(round: number, total?: number) {
-      if (!this.#ready) this.connectedCallback();
       if (total != null && total !== this.#count) this.setCount(total);
       const current = clamp(round, 1, this.#count);
       this.#paintFill(current);
-      if (this.#$current) this.#$current.textContent = String(current);
+      this.#$current.textContent = String(current);
       this.#announce(current);
     }
 
     #geometry(n: number) {
-      const segment = PATH_LENGTH / n;
+      const segment = 100 / n;
       const linecap = n <= ROUND_LINECAP_THRESHOLD ? "round" : "butt";
 
       if (linecap === "round") {
@@ -114,13 +99,12 @@ const { count, class: className, ...rest } = Astro.props;
       const g = this.#geometry(this.#count);
       this.style.setProperty("--segment-gap", String(g.gap));
       this.style.setProperty("--segment-dash", String(g.dash));
-      this.style.setProperty("--segment-rest", String(PATH_LENGTH - g.dash));
+      this.style.setProperty("--segment-rest", String(100 - g.dash));
       this.style.setProperty("--segment-linecap", g.linecap);
       return g;
     }
 
     #paintFillRing(dasharray: string, visible: boolean) {
-      if (!(this.#$fill instanceof SVGElement)) return;
       this.#$fill.style.setProperty("--fill-dasharray", dasharray);
       this.#$fill.style.opacity = visible ? "1" : "0";
     }
@@ -131,9 +115,7 @@ const { count, class: className, ...rest } = Astro.props;
 
       if (lit <= 0) {
         this.#paintFillRing("0 100", false);
-        if (this.#$active instanceof HTMLElement || this.#$active instanceof SVGElement) {
-          this.#$active.style.opacity = "0";
-        }
+        this.#$active.style.opacity = "0";
         return;
       }
 
@@ -147,9 +129,7 @@ const { count, class: className, ...rest } = Astro.props;
         this.#paintFillRing(pattern.join(" "), true);
       }
 
-      if (this.#$active instanceof HTMLElement || this.#$active instanceof SVGElement) {
-        this.#$active.style.opacity = "1";
-      }
+      this.#$active.style.opacity = "1";
       this.style.setProperty("--active-index", String(completed));
     }
 
@@ -170,7 +150,7 @@ const { count, class: className, ...rest } = Astro.props;
   }
 
   if (!customElements.get("counter-ring")) {
-    customElements.define("counter-ring", CounterRingElement);
+    customElements.define("counter-ring", CounterRing);
   }
 </script>
 
@@ -229,10 +209,6 @@ const { count, class: className, ...rest } = Astro.props;
 
   .counter-ring[data-announce] :global(.ring) {
     animation: pulse 1s steps(1, jump-end) 2 forwards;
-  }
-
-  :global([data-status="complete"]) .counter-ring :global(.ring) {
-    animation: pulse 1s steps(1, jump-end) 3 forwards;
   }
 
   :global([data-status="complete"]) .counter-ring :global(.fill) {

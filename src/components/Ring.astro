@@ -46,6 +46,10 @@ const { class: className, ...rest } = Astro.props;
     stroke-linecap: var(--segment-linecap, round);
   }
 
+  :global([data-status="complete"]) .ring {
+    animation: pulse 1s steps(1, jump-end) 3 forwards;
+  }
+
   @media (min-aspect-ratio: 3/2) {
     .ring {
       inline-size: 5em;

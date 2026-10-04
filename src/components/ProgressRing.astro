@@ -37,26 +37,28 @@ const { workPercent, restPercent } = phasePercents(work, rest);
   import { clampNumber } from "../scripts/utils.js";
   import { phasePercents } from "../scripts/progress-ring.js";
 
-  /** Must match `--duration` on [data-phase] groups in ProgressRing.astro */
-  const TRANSITION_SECONDS = 0.4;
-
-  /**
-   * Light-DOM dual-phase progress ring. Markup comes from Astro.
-   */
-  class ProgressRingElement extends HTMLElement {
+  class ProgressRing extends HTMLElement {
     #$work: SVGGElement | null = null;
     #$rest: SVGGElement | null = null;
     #prevWork = 0;
     #prevRest = 0;
+    #transitionSeconds = 0;
     #ready = false;
 
     connectedCallback() {
+      this.#ensureReady();
+    }
+
+    #ensureReady() {
       if (this.#ready) return;
 
       const work = this.querySelector('[data-phase="work"]');
       const rest = this.querySelector('[data-phase="rest"]');
       this.#$work = work instanceof SVGGElement ? work : null;
       this.#$rest = rest instanceof SVGGElement ? rest : null;
+      this.#transitionSeconds = Number.parseFloat(
+        getComputedStyle(this).getPropertyValue("--duration"),
+      );
       this.#ready = true;
     }
 
@@ -68,7 +70,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
      * @param {{ fill?: boolean }} [opts] When fill is true (default), snap fills to full.
      */
     setTotals(workSeconds: number, restSeconds: number, { fill = true }: { fill?: boolean } = {}) {
-      if (!this.#ready) this.connectedCallback();
+      this.#ensureReady();
       const { workPercent, restPercent } = phasePercents(workSeconds, restSeconds);
       this.style.setProperty("--progress-work-percent", String(workPercent));
       this.style.setProperty("--progress-rest-percent", String(restPercent));
@@ -95,7 +97,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       },
       { settle = false }: { settle?: boolean } = {},
     ) {
-      if (!this.#ready) this.connectedCallback();
+      this.#ensureReady();
 
       const duration = Math.max(0, Number(durationSeconds) || 0);
       const remaining = Math.max(0, Number(remainingSeconds) || 0);
@@ -108,7 +110,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       }
 
       // Lead by transition length so CSS catches up as the next tick arrives.
-      const leadSec = Math.min(TRANSITION_SECONDS, remaining);
+      const leadSec = Math.min(this.#transitionSeconds, remaining);
       const led = this.#valuesForPhase(
         phase,
         this.#progressAt(Math.min(duration, elapsed + leadSec), duration),
@@ -132,7 +134,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     }
 
     reset() {
-      if (!this.#ready) this.connectedCallback();
+      this.#ensureReady();
       this.#paint(0, 0, { instant: true });
     }
 
@@ -146,7 +148,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       value: number,
       {
         instant = false,
-        durationSeconds = TRANSITION_SECONDS,
+        durationSeconds = this.#transitionSeconds,
       }: {
         instant?: boolean;
         durationSeconds?: number;
@@ -154,7 +156,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     ) {
       if (!el) return;
 
-      if (durationSeconds >= TRANSITION_SECONDS - 0.001) {
+      if (durationSeconds >= this.#transitionSeconds - 0.001) {
         el.style.removeProperty("--duration");
       } else {
         el.style.setProperty("--duration", `${Math.max(0, durationSeconds)}s`);
@@ -189,18 +191,18 @@ const { workPercent, restPercent } = phasePercents(work, rest);
   }
 
   if (!customElements.get("progress-ring")) {
-    customElements.define("progress-ring", ProgressRingElement);
+    customElements.define("progress-ring", ProgressRing);
   }
 </script>
 
 <style>
   .progress-ring {
+    --duration: 0.4s;
     display: block;
     min-width: 0;
   }
 
   [data-phase] {
-    --duration: 0.4s;
     transform-origin: center;
     transform-box: view-box;
     transition: --phase-progress var(--duration) linear;
@@ -246,10 +248,6 @@ const { workPercent, restPercent } = phasePercents(work, rest);
     height: var(--size);
     border-radius: 50%;
     background-color: var(--color-digit, var(--color-fg));
-  }
-
-  :global([data-status="complete"]) .progress-ring :global(.ring) {
-    animation: pulse 1s steps(1, jump-end) 3 forwards;
   }
 
   /* [data-phase] for the blinking dot lives on the app root, not these <g>s. */
