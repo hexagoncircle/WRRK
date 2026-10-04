@@ -431,7 +431,7 @@ export function enhancePlayer(root, options) {
       counterRing?.setActive(detail.round ?? 1, detail.totalRounds);
       if (syncRing) {
         syncRingGeometryForPhase(detail.phase);
-        syncRingProgress(detail.phase, detail.phase.durationSeconds);
+        syncRingProgress(detail.phase, detail.phase.durationSeconds, { settle: true });
       }
     } else {
       return;

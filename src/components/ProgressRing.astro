@@ -37,8 +37,6 @@ const { workPercent, restPercent } = phasePercents(work, rest);
   class ProgressRing extends HTMLElement {
     $work!: SVGGElement;
     $rest!: SVGGElement;
-    #prevWork = 0;
-    #prevRest = 0;
     #transitionSeconds = 0;
 
     connectedCallback() {
@@ -52,7 +50,7 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       const { workPercent, restPercent } = phasePercents(workSeconds, restSeconds);
       this.style.setProperty("--work-percent", String(workPercent));
       this.style.setProperty("--rest-percent", String(restPercent));
-      if (fill) this.#paint(100, 100, { instant: true });
+      if (fill) this.#setPhaseProgress(100, 100, true);
     }
 
     setProgress(
@@ -70,79 +68,46 @@ const { workPercent, restPercent } = phasePercents(work, rest);
       const duration = Math.max(0, Number(durationSeconds) || 0);
       const remaining = Math.max(0, Number(remainingSeconds) || 0);
       const elapsed = duration === 0 ? 0 : duration - remaining;
-      const actual = this.#valuesForPhase(phase, this.#progressAt(elapsed, duration));
 
       if (settle) {
-        this.#paint(actual.work, actual.rest, { instant: true });
+        const actual = this.#phaseValues(phase, elapsed, duration);
+        this.#setPhaseProgress(actual.work, actual.rest, true);
         return;
       }
 
       // Lead by transition length so CSS catches up as the next tick arrives.
       const leadSec = Math.min(this.#transitionSeconds, remaining);
-      const led = this.#valuesForPhase(
-        phase,
-        this.#progressAt(Math.min(duration, elapsed + leadSec), duration),
-      );
+      const led = this.#phaseValues(phase, Math.min(duration, elapsed + leadSec), duration);
 
-      const workInstant = led.work < this.#prevWork - 0.001;
-      const restInstant = led.rest < this.#prevRest - 0.001;
-      const work = workInstant ? actual.work : led.work;
-      const rest = restInstant ? actual.rest : led.rest;
-
-      this.#setPhaseProgress(this.$work, work, {
-        instant: workInstant,
-        durationSeconds: leadSec,
-      });
-      this.#setPhaseProgress(this.$rest, rest, {
-        instant: restInstant,
-        durationSeconds: leadSec,
-      });
-      this.#prevWork = work;
-      this.#prevRest = rest;
+      this.#setDuration(leadSec);
+      this.#setPhaseProgress(led.work, led.rest);
     }
 
     reset() {
-      this.#paint(0, 0, { instant: true });
+      this.#setPhaseProgress(0, 0, true);
     }
 
-    #setPhaseProgress(
-      el: SVGGElement,
-      value: number,
-      {
-        instant = false,
-        durationSeconds = this.#transitionSeconds,
-      }: {
-        instant?: boolean;
-        durationSeconds?: number;
-      } = {},
-    ) {
-      if (durationSeconds >= this.#transitionSeconds - 0.001) {
-        el.style.removeProperty("--duration");
-      } else {
-        el.style.setProperty("--duration", `${Math.max(0, durationSeconds)}s`);
+    #setDuration(value: number) {
+      if (value >= this.#transitionSeconds - 0.001) {
+        this.style.removeProperty("--duration");
+        return;
       }
+      this.style.setProperty("--duration", `${Math.max(0, value)}s`);
+    }
 
-      if (instant) el.style.transition = "none";
-      el.style.setProperty("--phase-progress", String(value));
+    #setPhaseProgress(workProgress: number, restProgress: number, instant = false) {
+      if (instant) this.style.setProperty("--duration", "0s");
+      this.$work.style.setProperty("--phase-progress", String(workProgress));
+      this.$rest.style.setProperty("--phase-progress", String(restProgress));
       if (instant) {
-        el.getBoundingClientRect();
-        el.style.removeProperty("transition");
+        this.getBoundingClientRect();
+        this.style.removeProperty("--duration");
       }
     }
 
-    #paint(workProgress: number, restProgress: number, { instant = false } = {}) {
-      this.#setPhaseProgress(this.$work, workProgress, { instant });
-      this.#setPhaseProgress(this.$rest, restProgress, { instant });
-      this.#prevWork = workProgress;
-      this.#prevRest = restProgress;
-    }
-
-    #progressAt(elapsed: number, duration: number) {
-      if (duration <= 0) return 0;
-      return clampNumber((elapsed / duration) * 100, 0, 100);
-    }
-
-    #valuesForPhase(phase: "work" | "rest" | null, progress: number) {
+    #phaseValues(phase: "work" | "rest" | null, elapsed: number, duration: number) {
+      const progress =
+        duration <= 0 ? 0 : clampNumber((elapsed / duration) * 100, 0, 100);
       if (phase === "work") return { work: progress, rest: 0 };
       if (phase === "rest") return { work: 100, rest: progress };
       return { work: 0, rest: 0 };
