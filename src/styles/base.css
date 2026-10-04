@@ -36,20 +36,7 @@
     (100vh - var(--ui-pad-block) * 2) / var(--ui-h)
   );
 
-  /* Side-by-side: settings + timer, rings underneath */
-  @media (min-aspect-ratio: 6/5) {
-    --ui-w: 28;
-    --ui-h: 20;
-  }
-
-  /* Wide timer: settings, clock, rings in a row */
   @media (min-aspect-ratio: 3/2) {
-    --ui-w: 36;
-    --ui-h: 16;
-  }
-
-  /* Phone landscape: fill more of squat viewport */
-  @media (min-aspect-ratio: 3/2) and (height <= 28rem) {
     --ui-w: 34;
     --ui-h: 14;
   }
